@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Wrangler local state and build output
+.wrangler/
+dist/
+
+# Local secrets (MCP_SECRET is part of the endpoint URL)
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example
+
+# Test and tooling output
+coverage/
+*.log
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

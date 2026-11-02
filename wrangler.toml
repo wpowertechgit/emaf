@@ -1,0 +1,24 @@
+name = "emaf"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Optional: JavaScript rendering through Cloudflare Browser Rendering.
+# Uncomment to enable the `render: true` option on the scrape tool.
+# [browser]
+# binding = "BROWSER"
+
+# Optional: Workers AI, enables the embedding rerank stage of the research tool.
+# The Workers Free plan includes 10,000 neurons per day; see README.md.
+# [ai]
+# binding = "AI"
+
+# Optional plain variables.
+# [vars]
+# OPENALEX_MAILTO = "you@example.com"
+
+# Secrets (set with `npx wrangler secret put <NAME>`):
+#   MCP_SECRET        required, the secret path segment of the MCP URL
+#   BRAVE_API_KEY     optional, enables Brave Search for web search
+#   GITHUB_TOKEN      optional, read-only token for prior_art (higher limits, code search)
+#   OPENALEX_API_KEY  optional, raises the OpenAlex daily budget for research
