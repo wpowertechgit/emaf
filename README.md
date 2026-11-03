@@ -1,6 +1,6 @@
 # EMAF
 
-### Extract Markdown And Facts
+### Enterprise Markdown Acquisition Framework
 
 Research the web from Claude. Facts with sources, not page dumps.
 
