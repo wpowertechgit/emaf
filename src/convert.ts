@@ -60,6 +60,33 @@ export function fastHtmlText(html: string, maxChars: number): string {
 }
 
 /**
+ * The page's main content without a DOM: the span from the first <main> to
+ * the last </main>, else from the first <article> to the last </article>,
+ * else the whole page. Markdown Conversion only drops header and footer, so
+ * this keeps navigation, sidebars and skip links out of its output.
+ */
+export function mainContentHtml(html: string): string {
+  const lower = html.toLowerCase();
+  for (const tag of ["main", "article"]) {
+    const open = lower.search(new RegExp(`<${tag}[\\s>]`));
+    if (open === -1) continue;
+    const close = lower.lastIndexOf(`</${tag}>`);
+    // Very short spans are usually a wrapper for a widget, not the content.
+    if (close > open && close - open > 1000) return html.slice(open, close + tag.length + 3);
+  }
+  return html;
+}
+
+/** Removes the metadata front matter and skip links that conversion adds. */
+function tidyConverted(markdown: string): string {
+  return markdown
+    .replace(/^\s*---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, "")
+    .replace(/^[ \t]*\[(?:skip|jump) to [^\]]*\]\(#[^)]*\)[ \t]*$/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * Converts HTML with Workers AI Markdown Conversion. Returns null when the
  * binding lacks the method, the budget is exhausted, or the conversion fails,
  * so callers can fall back to local extraction.
@@ -73,14 +100,17 @@ export async function aiHtmlToMarkdown(
 ): Promise<string | null> {
   if (!ai?.toMarkdown || !budget.tryTakeInternal()) return null;
   try {
-    const input = html.length > MAX_HTML_CHARS ? html.slice(0, MAX_HTML_CHARS) : html;
+    const main = mainContentHtml(html);
+    const input = main.length > MAX_HTML_CHARS ? main.slice(0, MAX_HTML_CHARS) : main;
     const response = await ai.toMarkdown(
       { name: "page.html", blob: new Blob([input], { type: "text/html" }) },
       { conversionOptions: { html: { hostname: pageUrl }, output: { format } } },
     );
     const result: ToMarkdownResult | undefined = Array.isArray(response) ? response[0] : response;
-    if (!result || result.format === "error" || typeof result.data !== "string" || !result.data.trim()) return null;
-    return format === "markdown" ? cleanMarkdownImages(result.data) : result.data.trim();
+    if (!result || result.format === "error" || typeof result.data !== "string") return null;
+    const tidy = tidyConverted(result.data);
+    if (!tidy) return null;
+    return format === "markdown" ? cleanMarkdownImages(tidy) : tidy;
   } catch {
     return null;
   }

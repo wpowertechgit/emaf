@@ -55,12 +55,18 @@ export function isBadgeUrl(src: string): boolean {
   return /(?:^|\/)badges?(?:\/|\.svg$|\.png$|$)|\/badge\.svg$|\/(?:pipeline|coverage)\.svg$/.test(path);
 }
 
-/** Removes signed or very long query strings and fragments from an image URL. */
+/** Removes signed or very long query strings and utm_ tracking parameters from an image URL. */
 export function cleanImageUrl(src: string): string {
   const q = src.indexOf("?");
   if (q === -1) return src;
   const query = src.slice(q);
-  return query.length > 100 || SIGNED_PARAMS.test(query) ? src.slice(0, q) : src;
+  if (query.length > 100 || SIGNED_PARAMS.test(query)) return src.slice(0, q);
+  const kept = query
+    .slice(1)
+    .replace(/&amp;/g, "&")
+    .split("&")
+    .filter((param) => param && !/^utm_/i.test(param));
+  return kept.length ? `${src.slice(0, q)}?${kept.join("&")}` : src.slice(0, q);
 }
 
 const MD_IMAGE = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;

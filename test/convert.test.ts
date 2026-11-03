@@ -171,3 +171,46 @@ describe("tools with Workers AI conversion", () => {
     expect(text).toContain("Page conversion: local text extraction");
   });
 });
+
+describe("Markdown Conversion input and output tidying", () => {
+  const article = `<p>${"Real article text. ".repeat(80)}</p>`;
+
+  it("sends only the main element to the converter", async () => {
+    const { ai, calls } = fakeAi(() => ({ format: "markdown", data: "ok" }));
+    const html = `<html><body><nav>Menu Menu</nav><main id="content">${article}</main><aside>Sidebar</aside></body></html>`;
+    await aiHtmlToMarkdown(ai, new Budget(), html, SITE);
+    expect(calls[0].html.startsWith('<main id="content">')).toBe(true);
+    expect(calls[0].html.endsWith("</main>")).toBe(true);
+    expect(calls[0].html).not.toContain("Sidebar");
+  });
+
+  it("falls back to article, then to the whole page", async () => {
+    const { ai, calls } = fakeAi(() => ({ format: "markdown", data: "ok" }));
+    await aiHtmlToMarkdown(ai, new Budget(), `<body><nav>x</nav><article>${article}</article></body>`, SITE);
+    expect(calls[0].html.startsWith("<article>")).toBe(true);
+    const whole = `<body><nav>x</nav><div>${article}</div><main>tiny</main></body>`;
+    await aiHtmlToMarkdown(ai, new Budget(), whole, SITE);
+    expect(calls[1].html).toBe(whole);
+  });
+
+  it("removes front matter, skip links and image tracking parameters", async () => {
+    const { ai } = fakeAi(() => ({
+      format: "markdown",
+      data: [
+        "---",
+        "title: Creatine - Wikipedia",
+        "image: https://img.test/a.png",
+        "---",
+        "",
+        "[Jump to content](#bodyContent)",
+        "",
+        "# Creatine",
+        "",
+        "![Structure](https://img.test/s.png?utm_source=wiki&amp;utm_campaign=parser&width=200)",
+      ].join("\n"),
+    }));
+    expect(await aiHtmlToMarkdown(ai, new Budget(), "<p>x</p>", SITE)).toBe(
+      "# Creatine\n\n![Structure](https://img.test/s.png?width=200)",
+    );
+  });
+});
