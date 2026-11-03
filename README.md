@@ -1,185 +1,84 @@
 # EMAF
 
-A self-hosted alternative to Firecrawl: a remote [MCP](https://modelcontextprotocol.io) server on Cloudflare Workers for research from Claude. It turns web pages into clean Markdown, and its `research` and `prior_art` tools return ranked, condensed passages with sources instead of raw page dumps.
+Web research tools for Claude, as a self-hosted MCP server on Cloudflare Workers.
 
-- Runs on the Cloudflare Workers free plan.
-- No framework and no MCP SDK: a small, stateless implementation of the MCP Streamable HTTP transport (JSON responses, no SSE, no sessions).
-- Uses official free APIs (OpenAlex, arXiv, GitHub, npm, PyPI) instead of scraping their HTML.
-- HTML is parsed with [linkedom](https://github.com/WebReflection/linkedom), the main content is picked by [Readability](https://github.com/mozilla/readability), and Markdown is produced by [Turndown](https://github.com/mixmark-io/turndown) with GitHub Flavored Markdown tables. Badge images are dropped and signed image URLs are shortened.
+Ask a question and get the relevant passages from web pages, papers and preprints, ranked and cited. Ask whether something already exists and get the open-source projects that do it, with the README line that proves it. Read any URL or PDF as clean Markdown.
+
+Runs on the Workers free plan. No paid APIs required.
 
 ## Tools
 
-| Tool | Use it for | What it does |
-| --- | --- | --- |
-| `research` | "Look into X", fact-checking, "what is known about X" | Derives 2-4 search queries from the question, searches the web, [OpenAlex](https://openalex.org) and [arXiv](https://arxiv.org) in parallel, reads the top web pages, splits everything into passages, ranks them with BM25 (optionally reranked by embeddings), removes near-duplicates and returns the best passages grouped by source. Papers include authors, venue, citation count and DOI; preprints are marked as not peer reviewed. Options: `depth` (`quick`, `normal`, `deep`), `sources` (`web`, `academic`, `all`), `maxChars` (default 12000). |
-| `prior_art` | "Does something like this exist?", "is there a library for X?" | Searches GitHub repositories (plus GitHub code search with a token), npm and PyPI, reads each candidate's README and quotes the passage most relevant to the description. Reports stars, last push, archived flag, license and open issues, and flags projects without a push in 12+ months. Options: `language` (for example `python`, `typescript`, `rust`), `limit` (default 8), `maxChars`. |
-| `scrape` | Reading one specific URL | Fetches one URL and returns Markdown, plain text or cleaned HTML. PDFs (up to 10 MB) are converted to text with one section per page. Strips navigation, headers, footers and scripts by default (`onlyMainContent`). `render: true` loads the page in a headless browser first (requires Browser Rendering). `includeLinks` appends every link on the page. With a KV cache configured, results are cached; `cacheTtl` sets the maximum age in seconds (default 3600, `0` for a fresh copy). |
-| `batch_scrape` | Reading a list of known URLs | Reads up to 20 URLs, possibly from different sites, in one call and returns each as Markdown or text, including PDFs. Duplicates (including fragment variants) are fetched once, failures are listed per URL, and URLs beyond the subrequest budget are reported as skipped. Options: `format`, `onlyMainContent`, `maxCharsPerPage` (default 8000), `maxChars` (default 40000). |
-| `crawl` | Reading several pages of one site | Breadth-first crawl of a single host, returning Markdown per page. Options: `limit` (up to 40 pages), `maxDepth`, `pathPrefix` (for example `/docs/`), `maxCharsPerPage` and `respectRobots` (fetch robots.txt first and skip disallowed URLs, following RFC 9309). |
-| `map` | Finding the right page on a known site | Lists the URLs linked from a page plus the entries of the site's `/sitemap.xml`. Supports a substring filter (`search`), `sameDomainOnly` and `limit`. |
-| `search` | Raw web search results | Uses Brave Search when `BRAVE_API_KEY` is set and DuckDuckGo HTML otherwise. `scrapeResults` also fetches each result. |
+| Tool | For |
+| --- | --- |
+| `research` | Questions and fact-checks. Searches the web, OpenAlex and arXiv, reads the top pages, returns the best passages with sources. Preprints are flagged as not peer reviewed. |
+| `prior_art` | "Does this exist?" Searches GitHub, npm and PyPI and quotes where each README mentions the feature, with stars, last push, license and maintenance status. |
+| `scrape` | One URL as Markdown. HTML or PDF. |
+| `batch_scrape` | Up to 20 URLs in one call. |
+| `crawl` | Several pages of one site. |
+| `map` | List a site's URLs from its links and sitemap. |
+| `search` | Raw web search results. |
 
-The tool descriptions steer Claude: `research` for questions and claims, `prior_art` for build decisions, `scrape`/`batch_scrape`/`crawl`/`map` for specific URLs and sites.
-
-### Research skill
-
-[`skills/research/SKILL.md`](skills/research/SKILL.md) is a Claude skill that describes the research method (start with `research`, prefer primary sources, cross-check key claims, flag preprints and single sources, run `prior_art` before building). Upload it to Claude as a custom skill (zip the `skills/research` folder if the upload asks for an archive).
+Parameters for each tool: [docs/tools.md](docs/tools.md).
 
 ## Deploy
 
-Requires Node.js 22 or later and a Cloudflare account (the free plan is enough).
+Needs Node.js 22+ and a Cloudflare account.
 
 ```bash
+git clone https://github.com/wpowertechgit/emaf.git
+cd emaf
 npm install
 npx wrangler login
 npx wrangler deploy
+npx wrangler secret put MCP_SECRET    # long random string: openssl rand -hex 24
 ```
 
-Generate a long random secret and store it as `MCP_SECRET`. It becomes part of the endpoint URL and is the only thing protecting the endpoint, so treat it like a password:
-
-```bash
-openssl rand -hex 24
-npx wrangler secret put MCP_SECRET
-```
-
-The MCP endpoint is:
+Your endpoint:
 
 ```
 https://emaf.<your-subdomain>.workers.dev/mcp/<MCP_SECRET>
 ```
 
-Check that the Worker is up by opening `https://emaf.<your-subdomain>.workers.dev/health`.
+The secret is the password. Keep the URL private, or use [OAuth](docs/configuration.md#oauth) instead.
 
-## Add to Claude
+## Connect to Claude
 
-In Claude, open **Settings → Connectors → Add custom connector**, paste the endpoint URL, leave the OAuth fields empty and save. To sign in with OAuth instead of a secret URL, see [OAuth](#oauth-optional). Any other MCP client that supports the Streamable HTTP transport can use the same URL.
+**Settings → Connectors → Add custom connector**, paste the endpoint, leave the OAuth fields empty, save.
 
-## Optional configuration
+Optional: upload [`skills/research`](skills/research/SKILL.md) as a Claude skill. It tells Claude how to research: primary sources first, two independent sources per key claim, preprints and single sources called out.
 
-All of these are optional; every tool works without them.
+## Configuration
 
-| Setting | Type | Effect |
-| --- | --- | --- |
-| `GITHUB_TOKEN` | secret | Read-only GitHub token for `prior_art`. Raises GitHub limits from 60 requests per hour and 10 searches per minute (per IP, shared with other Workers) to 5,000 per hour and 30 searches per minute, and enables GitHub code search, which GitHub only allows with authentication. A fine-grained token with no extra permissions (public repositories, read-only) is enough. |
-| `BRAVE_API_KEY` | secret | Uses the [Brave Search API](https://brave.com/search/api/) for web search. DuckDuckGo, the fallback, may rate-limit requests coming from Cloudflare. |
-| `OPENALEX_API_KEY` | secret | Free [OpenAlex](https://openalex.org) API key. Keyless use works (10 requests per second); a key raises the daily budget tenfold. |
-| `OPENALEX_MAILTO` | variable | Contact address sent to OpenAlex as `mailto`. |
-| `AI` | binding | [Workers AI](https://developers.cloudflare.com/workers-ai/). Enables the embedding rerank stage of `research`. |
-| `CACHE` | binding | [Workers KV](https://developers.cloudflare.com/kv/) namespace that caches `scrape` results. |
-| `RATE_LIMITER` | binding | [Workers Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) for tool calls. |
-| `RATE_LIMIT_PER_MINUTE` | variable | Tool calls per minute for the in-memory fallback limiter used without `RATE_LIMITER` (default 60, `0` disables it). |
-| `OAUTH_KV` | binding | KV namespace for OAuth clients and tokens. Enables OAuth together with `AUTH_PASSWORD`. |
-| `AUTH_PASSWORD` | secret | Owner password asked on the OAuth consent page, at least 12 characters. |
-| `BROWSER` | binding | [Browser Rendering](https://developers.cloudflare.com/browser-rendering/). Enables `render: true` on `scrape`. |
+Everything is optional. Without any of it, all tools work.
 
-Secrets are set with `npx wrangler secret put <NAME>`. Bindings and variables are configured in `wrangler.toml` (commented examples are included).
+| Setting | Effect |
+| --- | --- |
+| `GITHUB_TOKEN` | Higher GitHub limits and code search for `prior_art`. Recommended. |
+| `BRAVE_API_KEY` | Brave Search instead of DuckDuckGo. |
+| `OPENALEX_API_KEY` | Higher OpenAlex daily budget. |
+| `AI` | Embedding rerank in `research` (Workers AI free tier). |
+| `CACHE` | KV cache for `scrape`. |
+| `OAUTH_KV` + `AUTH_PASSWORD` | OAuth sign-in instead of a secret URL. |
+| `RATE_LIMITER` | Rate limit tool calls (in-memory fallback otherwise). |
+| `BROWSER` | `render: true` for JavaScript-heavy pages. |
 
-### Embedding rerank (Workers AI)
-
-With the `AI` binding, `research` reorders the top 30 BM25 passages by cosine similarity of [`@cf/baai/bge-base-en-v1.5`](https://developers.cloudflare.com/workers-ai/models/bge-base-en-v1.5/) embeddings, in one batched call. Without the binding, or if the call fails, BM25 ranking is used alone.
-
-Workers AI limits on the Workers Free plan (from the Cloudflare docs, checked November 2026):
-
-- 10,000 neurons per day at no charge, reset daily at 00:00 UTC. When the allocation is used up, further calls fail until the reset (`research` then falls back to BM25); going beyond it requires Workers Paid ($0.011 per 1,000 neurons).
-- `bge-base-en-v1.5` costs 6,058 neurons per million input tokens. One rerank embeds roughly 10,000 to 12,000 tokens, about 60 to 75 neurons, so the free allocation covers roughly 130 reranked `research` calls per day.
-- Text embedding models are limited to 3,000 requests per minute.
-- The model is English-focused and accepts up to 512 tokens per input; passages are clipped to 350 words.
-
-### Scrape cache (Workers KV)
-
-Create a namespace and add the commented `[[kv_namespaces]]` block in `wrangler.toml` with its id:
-
-```bash
-npx wrangler kv namespace create CACHE
-```
-
-`scrape` then stores each successful result under a hash of the URL and the output options, with `cacheTtl` seconds of expiry (default 3600, minimum 60), and serves later calls from the cache while the copy is younger than `cacheTtl`. Cached responses start with a note giving their age. Error pages are not cached, and a failing cache never fails a scrape.
-
-KV is included in Workers Free: 100,000 reads, 1,000 writes and 1 GB of storage per day (from the Cloudflare docs, checked November 2026). Every cache miss is one write, so the free plan caches up to 1,000 new pages per day; beyond that, writes fail and `scrape` keeps working uncached. KV reads and writes are included in the subrequest budget.
-
-### Rate limiting
-
-Tool calls (`tools/call`) are rate limited per secret; the handshake, `tools/list` and pings are not. The key is derived from a hash of `MCP_SECRET`, never the secret itself. A limited call returns a tool error asking Claude to wait, and the tool does not run.
-
-- With the `RATE_LIMITER` binding (the commented `[[ratelimits]]` block in `wrangler.toml`), Cloudflare's limiter applies. It is approximate and counts separately in each Cloudflare location.
-- Without it, an in-memory limiter allows `RATE_LIMIT_PER_MINUTE` tool calls per minute (default 60) in each Worker isolate. It is a best-effort guard against a leaked secret, not a global limit. Set it to `0` to disable it.
-
-### OAuth (optional)
-
-By default the secret in the URL is the only protection: anyone who sees the URL can use the server, and the only way to revoke access is a new secret. With OAuth, the connector URL is public and Claude signs in once through a consent page protected by an owner password; access is a token that expires and is refreshed, and it is bound to this server.
-
-Setup is two more steps than the secret URL:
-
-```bash
-npx wrangler kv namespace create OAUTH_KV   # paste the id into the commented OAUTH_KV block in wrangler.toml
-npx wrangler secret put AUTH_PASSWORD        # 12+ characters
-npx wrangler deploy
-```
-
-Then add `https://emaf.<your-subdomain>.workers.dev/mcp` (no secret) as a custom connector in Claude, leaving the OAuth client fields empty. Claude registers itself (Dynamic Client Registration) and opens the consent page, which shows the requesting app and where access will be sent. Enter the owner password and choose **Allow**.
-
-- OAuth uses [`@cloudflare/workers-oauth-provider`](https://github.com/cloudflare/workers-oauth-provider): OAuth 2.1 with PKCE, RFC 8414 and RFC 9728 discovery, and tokens stored in KV only as hashes. Client ID Metadata Documents are not enabled; Dynamic Client Registration is.
-- Password attempts are limited to 5 per minute per IP address and Worker isolate.
-- The secret URL keeps working next to OAuth. To turn it off, remove the secret with `npx wrangler secret delete MCP_SECRET`.
-- Tokens are bound to the hostname used to connect, so a server reachable through several hostnames issues separate tokens for each.
-- OAuth uses KV: each sign-in and token refresh writes a few keys, well within the free 1,000 writes per day.
+Setup and free-tier limits for each: [docs/configuration.md](docs/configuration.md).
 
 ## Limits
 
-- **Subrequests.** Workers Free allows 50 external subrequests per invocation, plus 1,000 to Cloudflare services such as KV and Workers AI. EMAF counts every outbound call (fetches, KV, the Workers AI call, Browser Rendering) against a single budget of 45 per MCP request, which stays below the stricter external limit; batched JSON-RPC calls share it. `research` plans its page reads within the remaining budget and falls back to search snippets when it runs low; `prior_art` limits README and repository lookups the same way. The output reports how many subrequests were used.
-- **Typical cost.** `research` (normal): 2 web searches, 1 OpenAlex call, 1 arXiv call and up to 6 page reads. `prior_art`: 2 GitHub searches, 1 npm search, up to 3 PyPI lookups, up to 4 repository lookups and up to 10 READMEs.
-- **CPU time.** Workers Free allows 10 ms of CPU time per invocation. Parsing and ranking many pages (`crawl`, `research` with `depth: "deep"`) can exceed it; Workers Paid raises the limit.
-- **Crawl** is capped at 40 pages per call. Run several crawls with different `pathPrefix` values for larger sites.
-- **PyPI** has no official search API. `prior_art` looks up a few project names derived from the description and finds Python packages through GitHub search; packages with unrelated names may be missed.
-- **arXiv** asks clients to make at most one request every three seconds; `research` makes one arXiv request per call. Avoid firing many `research` calls in parallel.
-- **GitHub** limits unauthenticated requests per IP, and Workers share outbound IPs, so `prior_art` without `GITHUB_TOKEN` may hit rate limits. The output says so when it happens.
-- Without rendering, pages that build their content entirely in JavaScript come back mostly empty. Use `render: true` for those.
-- `scrape` and `batch_scrape` extract the text layer of PDFs up to 10 MB with [unpdf](https://github.com/unjs/unpdf) (a serverless build of pdf.js). Scanned PDFs without a text layer return a note instead of text, since there is no OCR. Parsing large PDFs uses CPU time that can exceed the Workers Free limit. Other binary content, such as images, is rejected; `crawl` and `research` skip PDFs (`research` uses the search snippet).
-- Sites behind aggressive bot protection may still block requests.
+- Workers Free allows 50 outbound requests per call. EMAF budgets for that and reads fewer pages instead of failing. `crawl` stops at 40 pages.
+- Workers Free allows 10 ms of CPU per request. Deep research and large PDFs can go over.
+- No JavaScript rendering without `BROWSER`. No OCR for scanned PDFs.
+- PyPI has no search API, so `prior_art` finds Python packages by name guesses and through GitHub.
+- Sites with strong bot protection may block requests.
 
 ## Development
 
 ```bash
 npm install
 echo 'MCP_SECRET="dev"' > .dev.vars
-npm run dev
-# endpoint: http://127.0.0.1:8787/mcp/dev
+npm run dev          # http://127.0.0.1:8787/mcp/dev
+npm test
 ```
 
-`.dev.vars` and `.env` hold local secrets and are ignored by Git.
-
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Run the Worker locally with `wrangler dev`. |
-| `npm run typecheck` | Type-check the source and the tests. |
-| `npm test` | Run the test suite once. |
-| `npm run test:watch` | Run the tests in watch mode. |
-| `npm run deploy` | Deploy to Cloudflare. |
-
-Tests use [Vitest](https://vitest.dev) with [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), so they run inside the Workers runtime. Outbound `fetch` is replaced by a router over fixtures (`test/fixtures.ts` for HTML pages, `test/api-fixtures.ts` for OpenAlex, arXiv, GitHub, npm and PyPI responses); any request without a fixture fails, so tests never reach the network.
-
-CI (GitHub Actions) runs the typecheck, the tests and `wrangler deploy --dry-run` on every push and pull request.
-
-### Project layout
-
-```
-src/
-  index.ts           Worker entry point: routing and secret check
-  env.ts             Bindings and secrets
-  config.ts          Constants (protocol versions, timeouts, budgets, models)
-  context.ts         Per-request tool context (env and subrequest budget)
-  budget.ts          Subrequest accounting
-  util.ts            Argument validation and URL helpers
-  fetch.ts           Page fetching (plain fetch or Browser Rendering)
-  extract.ts         HTML to Markdown / text conversion
-  images.ts          Badge removal and signed image URL cleanup
-  clients/           One client per external API (web search, OpenAlex, arXiv, GitHub, npm, PyPI)
-  rank/              Tokenizer, BM25, chunking, near-duplicate removal, query derivation, embedding rerank
-  mcp/http.ts        Streamable HTTP transport (POST, CORS, batching)
-  mcp/jsonrpc.ts     JSON-RPC dispatch and MCP methods
-  tools/             One module per tool: definition and handler
-skills/research/     Claude skill describing the research method
-test/                Vitest suites and fixtures
-```
-
-Note: linkedom does not implement `HTMLTableElement.rows`, which the GFM table rules need. `prepareTables()` in `src/extract.ts` adds the getter to the element prototype, because Turndown clones the tree before converting and per-element patches would be lost.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
