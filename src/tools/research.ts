@@ -3,7 +3,7 @@ import { type Paper, searchOpenAlex } from "../clients/openalex";
 import { type WebResult, searchWeb } from "../clients/websearch";
 import { EMBEDDING_MODEL } from "../config";
 import type { ToolContext } from "../context";
-import { aiHtmlToMarkdown, fastHtmlText } from "../convert";
+import { aiHtmlToMarkdown, fastHtmlText, htmlTitle } from "../convert";
 import { fetchPage } from "../fetch";
 import { rankBm25 } from "../rank/bm25";
 import { chunkMarkdown } from "../rank/chunk";
@@ -11,7 +11,7 @@ import { dedupeNearDuplicates } from "../rank/dedup";
 import { deriveQueries } from "../rank/queries";
 import { rerankByEmbedding } from "../rank/rerank";
 import { words } from "../rank/tokenize";
-import { ToolError, clampNumber, errorMessage } from "../util";
+import { ToolError, clampNumber, errorMessage, requireHttpUrl } from "../util";
 import type { Tool } from "./types";
 
 type Depth = "quick" | "normal" | "deep";
@@ -160,6 +160,27 @@ function quote(text: string): string {
     .join("\n");
 }
 
+const MAX_PROVIDED_URLS = 10;
+
+/** Validates the optional `urls` argument: http(s) URLs, at most MAX_PROVIDED_URLS, duplicates removed. */
+function parseProvidedUrls(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new ToolError("`urls` must be an array of URLs.");
+  if (value.length > MAX_PROVIDED_URLS) {
+    throw new ToolError(`\`urls\` accepts at most ${MAX_PROVIDED_URLS} URLs per call.`);
+  }
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const url = requireHttpUrl(item).href;
+    const key = normalizeUrlKey(url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(url);
+  }
+  return urls;
+}
+
 async function research(args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
   const { env, budget } = ctx;
   const question = typeof args.question === "string" ? args.question.trim() : "";
@@ -173,6 +194,7 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
     throw new ToolError("`sources` must be one of web, academic, all.");
   }
   const maxChars = clampNumber(args.maxChars, 12_000, 2_000, 50_000);
+  const providedUrls = parseProvidedUrls(args.urls);
   const settings = DEPTHS[depth];
   const useWeb = sources !== "academic";
   const useAcademic = sources !== "web";
@@ -181,8 +203,9 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
   const notes: string[] = [];
   const searched: string[] = [];
 
-  // 1. Fan out to all search backends in parallel.
-  const webQueries = useWeb ? derived.queries.slice(0, settings.webQueries) : [];
+  // 1. Fan out to all search backends in parallel. URLs from the client's own
+  // web search replace EMAF's web search.
+  const webQueries = useWeb && providedUrls.length === 0 ? derived.queries.slice(0, settings.webQueries) : [];
   const openAlexQueries = useAcademic
     ? [derived.keywords.join(" "), derived.natural].filter(Boolean).slice(0, settings.openAlexQueries)
     : [];
@@ -206,7 +229,12 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
       notes.push(`Web search failed: ${errorMessage(outcome.reason)}`);
     }
   }
-  const webResults = interleave(webLists);
+  if (webQueries.length > 0 && webLists.length === 0) {
+    notes.push("Run your own web search and pass the result URLs as `urls` to read and rank them here.");
+  }
+  const webResults: WebResult[] = providedUrls.length
+    ? providedUrls.map((url) => ({ title: "", url, snippet: "" }))
+    : interleave(webLists);
 
   const papers: Paper[] = [];
   const seenTitles = new Set<string>();
@@ -241,10 +269,12 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
   const paperUrls = new Set(papers.map((p) => normalizeUrlKey(p.url)));
   const webCandidates = webResults.filter((r) => !paperUrls.has(normalizeUrlKey(r.url)));
   const readable = webCandidates.filter((r) => !/\.pdf(?:$|\?)/i.test(r.url));
-  const pagesAllowed = Math.max(0, Math.min(settings.pagesToRead, budget.remaining));
-  if (pagesAllowed < Math.min(settings.pagesToRead, readable.length)) {
+  // Provided URLs are all read; search results are read up to the depth's page count.
+  const plannedPages = providedUrls.length ? readable.length : Math.min(settings.pagesToRead, readable.length);
+  const pagesAllowed = Math.max(0, Math.min(plannedPages, budget.remaining));
+  if (pagesAllowed < plannedPages) {
     notes.push(
-      `Subrequest budget is low: read ${pagesAllowed} of ${Math.min(settings.pagesToRead, readable.length)} planned pages; the rest use search snippets.`,
+      `Subrequest budget is low: read ${pagesAllowed} of ${plannedPages} planned pages; the rest use search snippets.`,
     );
   }
   const toRead = readable.slice(0, pagesAllowed);
@@ -252,7 +282,7 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
 
   // Convert pages without a DOM: Workers AI when bound (no CPU cost here), local fast extraction otherwise.
   let convertedByAi = 0;
-  const textByUrl = new Map<string, { text: string; finalUrl: string }>();
+  const textByUrl = new Map<string, { text: string; finalUrl: string; title: string }>();
   await Promise.all(
     toRead.map(async (result, i) => {
       const outcome = pageSettled[i];
@@ -264,7 +294,11 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
         if (viaAi !== null) convertedByAi++;
         text = viaAi ?? fastHtmlText(page.body, MAX_PAGE_TEXT);
       }
-      textByUrl.set(result.url, { text: text.slice(0, MAX_PAGE_TEXT), finalUrl: page.url });
+      textByUrl.set(result.url, {
+        text: text.slice(0, MAX_PAGE_TEXT),
+        finalUrl: page.url,
+        title: page.isHtml ? htmlTitle(page.body) : "",
+      });
     }),
   );
 
@@ -273,7 +307,12 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
   let pagesRead = 0;
   for (const result of webCandidates) {
     const page = textByUrl.get(result.url);
-    const source: Source = { kind: "web", title: result.title || result.url, url: result.url, date: "" };
+    const source: Source = {
+      kind: "web",
+      title: result.title || page?.title || result.url,
+      url: result.url,
+      date: "",
+    };
     let chunks: { section: string; text: string }[] = [];
     if (page) {
       chunks = chunkMarkdown(page.text);
@@ -299,7 +338,9 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
     }
   }
 
-  if (useWeb) {
+  if (providedUrls.length) {
+    searched.push(`web (${providedUrls.length} URL(s) provided, ${pagesRead} page(s) read)`);
+  } else if (useWeb) {
     searched.push(
       `web (${engine || "search failed"}; ${webQueries.length} quer${webQueries.length === 1 ? "y" : "ies"}, ${pagesRead} page(s) read)`,
     );
@@ -411,7 +452,8 @@ export const researchTool: Tool = {
     description:
       "Research a question across the web and academic literature and return the most relevant passages, ranked and grouped by source with citations. " +
       "Use this first for 'look into X', 'fact-check this claim', 'what is known about X', 'find evidence/studies on X' or any question that needs multiple sources. " +
-      "Searches web pages, OpenAlex (papers with venue, citation count, DOI) and arXiv (preprints, marked as not peer reviewed), reads the top pages, and ranks passages against the question. " +
+      "Searches OpenAlex (papers with venue, citation count, DOI) and arXiv (preprints, marked as not peer reviewed), reads web pages, and ranks all passages against the question. " +
+      "Best results: run your own web search first and pass the most relevant result URLs as `urls`; EMAF reads them in full and ranks their passages together with the papers. Without `urls` it runs its own web search, which may be rate limited. " +
       "Returns condensed excerpts, not whole pages: use `scrape` afterwards to read a promising source in full.",
     inputSchema: {
       type: "object",
@@ -430,6 +472,11 @@ export const researchTool: Tool = {
           type: "string",
           enum: ["web", "academic", "all"],
           description: "Which sources to search. Defaults to all.",
+        },
+        urls: {
+          type: "array",
+          items: { type: "string" },
+          description: `Web pages to read and rank, for example the best results of your own web search. At most ${MAX_PROVIDED_URLS}. When given, EMAF does not run its own web search.`,
         },
         maxChars: {
           type: "number",

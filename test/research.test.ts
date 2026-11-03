@@ -158,10 +158,41 @@ describe("research", () => {
     expect(text).toContain("Ranking: BM25\n");
   });
 
+  it("reads URLs from the client's own web search instead of searching itself", async () => {
+    const mock = mockFetch(RESEARCH_ROUTES);
+    const { text, isError } = await callTool("research", {
+      question: QUESTION,
+      urls: ["https://health.test/fasting", "https://garden.test/tomatoes", "https://health.test/fasting#dup"],
+    });
+    expect(isError).toBe(false);
+    expect(mock.unexpected).toEqual([]);
+    expect(mock.requested.some((u) => u.includes("duckduckgo"))).toBe(false);
+    expect(mock.requested).toContain("https://health.test/fasting");
+    expect(mock.requested.filter((u) => u === "https://health.test/fasting")).toHaveLength(1);
+    expect(text).toContain("Searched: web (2 URL(s) provided, 2 page(s) read), OpenAlex");
+    // The page title comes from the fetched page, since there is no search result title.
+    expect(sourceTitles(text)).toContain("Fasting and insulin");
+    expect(sourceTitles(text)).not.toContain("Gardening");
+  });
+
+  it("suggests passing urls when its own web search fails", async () => {
+    mockFetch({ ...RESEARCH_ROUTES, "https://html.duckduckgo.com/html/": "<html></html>" });
+    const { text } = await callTool("research", { question: QUESTION });
+    expect(text).toContain("pass the result URLs as `urls`");
+  });
+
   it("validates its arguments", async () => {
     mockFetch({});
     expect((await callTool("research", {})).text).toBe("Error: `question` must be a non-empty string.");
     expect((await callTool("research", { question: "x", depth: "huge" })).text).toContain("`depth` must be one of");
     expect((await callTool("research", { question: "x", sources: "books" })).text).toContain("`sources` must be one of");
+    expect((await callTool("research", { question: "x", urls: "https://a.test" })).text).toContain(
+      "`urls` must be an array",
+    );
+    expect((await callTool("research", { question: "x", urls: ["ftp://a.test/f"] })).text).toContain(
+      "Only http and https URLs",
+    );
+    const tooMany = Array.from({ length: 11 }, (_, i) => `https://a.test/${i}`);
+    expect((await callTool("research", { question: "x", urls: tooMany })).text).toContain("at most 10 URLs");
   });
 });

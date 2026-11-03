@@ -7,7 +7,7 @@ Claude picks tools by their descriptions: `research` for questions and claims, `
 Answers a question with ranked passages from several sources.
 
 1. Derives 2 to 4 search queries from the question (the question, a keyword variant, quoted key phrases).
-2. Searches the web, [OpenAlex](https://openalex.org) and [arXiv](https://arxiv.org) in parallel.
+2. Searches [OpenAlex](https://openalex.org) and [arXiv](https://arxiv.org), and the web, in parallel. When `urls` are given (for example the results of Claude's own web search), those pages are read instead of running EMAF's web search.
 3. Reads the top web pages within the request budget. PDF results use their search snippet.
 4. Splits everything into passages of 150 to 300 words, ranks them with BM25, optionally reranks the top 30 by embeddings, and drops near-duplicates.
 5. Returns the best passages grouped by source. Papers include authors, venue, citation count and DOI. Preprints are marked as not peer reviewed.
@@ -17,6 +17,7 @@ Answers a question with ranked passages from several sources.
 | `question` | required | The question or claim. |
 | `depth` | `normal` | `quick`, `normal` or `deep`: how many queries, pages and papers. |
 | `sources` | `all` | `web`, `academic` or `all`. |
+| `urls` | none | Up to 10 pages to read and rank, for example your own web search results. Replaces EMAF's web search. |
 | `maxChars` | 12000 | Output size limit. |
 
 ## prior_art

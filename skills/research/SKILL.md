@@ -7,7 +7,7 @@ description: Method for researching questions, fact-checking claims and checking
 
 ## Looking into a question or checking a claim
 
-1. **Start with `research`.** Pass the question in plain language. Use `depth: "deep"` for contested or high-stakes topics, `sources: "academic"` when only studies count.
+1. **Search the web, then run `research`.** Use your own web search first, then call `research` with the question in plain language and the best 5 to 10 result URLs as `urls`. EMAF reads those pages in full and ranks their passages together with papers from OpenAlex and arXiv. Use `depth: "deep"` for contested or high-stakes topics, `sources: "academic"` when only studies count.
 2. **Prefer primary sources.** Papers, official documentation, standards, original repositories and first-hand data beat news articles, blogs, aggregators and AI-generated summaries. Cite the primary source, not the page that repeated it.
 3. **Read before quoting.** The passages from `research` are excerpts. Use `scrape` on a promising source to read it in full before quoting it or drawing a conclusion from it.
 4. **Cross-check key claims.** Every claim the answer depends on needs at least two independent sources. Two pages that copy the same press release are one source.
