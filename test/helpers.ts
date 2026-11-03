@@ -1,3 +1,4 @@
+import { createExecutionContext } from "cloudflare:test";
 import { vi } from "vitest";
 import worker, { type Env } from "../src/index";
 
@@ -68,7 +69,7 @@ export function request(
   init: RequestInit = {},
   env: Env = testEnv(),
 ): Promise<Response> {
-  return worker.fetch(new Request(`${BASE_URL}${path}`, init), env);
+  return worker.fetch(new Request(`${BASE_URL}${path}`, init), env, createExecutionContext());
 }
 
 export function postMcp(body: unknown, env: Env = testEnv(), secret = TEST_SECRET): Promise<Response> {

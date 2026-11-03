@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.0.0",
+    "@cloudflare/workers-oauth-provider": "1.2.3",
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.0",
     "turndown": "^7.2.0",

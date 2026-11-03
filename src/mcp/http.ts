@@ -24,7 +24,12 @@ function accepted(): Response {
  * Stateless MCP Streamable HTTP transport with JSON responses only.
  * The caller is responsible for authenticating the request.
  */
-export async function handleMcpRequest(request: Request, env: Env): Promise<Response> {
+export async function handleMcpRequest(
+  request: Request,
+  env: Env,
+  /** Identity used for rate limiting: the URL secret, or the OAuth user. */
+  rateLimitIdentity?: string,
+): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -40,7 +45,7 @@ export async function handleMcpRequest(request: Request, env: Env): Promise<Resp
   const ctx = {
     env,
     budget: new Budget(),
-    rateLimitKey: env.MCP_SECRET ? await rateLimitKey(env.MCP_SECRET) : undefined,
+    rateLimitKey: rateLimitIdentity ? await rateLimitKey(rateLimitIdentity) : undefined,
   };
 
   let payload: unknown;

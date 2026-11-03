@@ -52,7 +52,7 @@ Check that the Worker is up by opening `https://emaf.<your-subdomain>.workers.de
 
 ## Add to Claude
 
-In Claude, open **Settings → Connectors → Add custom connector**, paste the endpoint URL, leave the OAuth fields empty and save. Any other MCP client that supports the Streamable HTTP transport can use the same URL.
+In Claude, open **Settings → Connectors → Add custom connector**, paste the endpoint URL, leave the OAuth fields empty and save. To sign in with OAuth instead of a secret URL, see [OAuth](#oauth-optional). Any other MCP client that supports the Streamable HTTP transport can use the same URL.
 
 ## Optional configuration
 
@@ -68,6 +68,8 @@ All of these are optional; every tool works without them.
 | `CACHE` | binding | [Workers KV](https://developers.cloudflare.com/kv/) namespace that caches `scrape` results. |
 | `RATE_LIMITER` | binding | [Workers Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) for tool calls. |
 | `RATE_LIMIT_PER_MINUTE` | variable | Tool calls per minute for the in-memory fallback limiter used without `RATE_LIMITER` (default 60, `0` disables it). |
+| `OAUTH_KV` | binding | KV namespace for OAuth clients and tokens. Enables OAuth together with `AUTH_PASSWORD`. |
+| `AUTH_PASSWORD` | secret | Owner password asked on the OAuth consent page, at least 12 characters. |
 | `BROWSER` | binding | [Browser Rendering](https://developers.cloudflare.com/browser-rendering/). Enables `render: true` on `scrape`. |
 
 Secrets are set with `npx wrangler secret put <NAME>`. Bindings and variables are configured in `wrangler.toml` (commented examples are included).
@@ -101,6 +103,26 @@ Tool calls (`tools/call`) are rate limited per secret; the handshake, `tools/lis
 
 - With the `RATE_LIMITER` binding (the commented `[[ratelimits]]` block in `wrangler.toml`), Cloudflare's limiter applies. It is approximate and counts separately in each Cloudflare location.
 - Without it, an in-memory limiter allows `RATE_LIMIT_PER_MINUTE` tool calls per minute (default 60) in each Worker isolate. It is a best-effort guard against a leaked secret, not a global limit. Set it to `0` to disable it.
+
+### OAuth (optional)
+
+By default the secret in the URL is the only protection: anyone who sees the URL can use the server, and the only way to revoke access is a new secret. With OAuth, the connector URL is public and Claude signs in once through a consent page protected by an owner password; access is a token that expires and is refreshed, and it is bound to this server.
+
+Setup is two more steps than the secret URL:
+
+```bash
+npx wrangler kv namespace create OAUTH_KV   # paste the id into the commented OAUTH_KV block in wrangler.toml
+npx wrangler secret put AUTH_PASSWORD        # 12+ characters
+npx wrangler deploy
+```
+
+Then add `https://emaf.<your-subdomain>.workers.dev/mcp` (no secret) as a custom connector in Claude, leaving the OAuth client fields empty. Claude registers itself (Dynamic Client Registration) and opens the consent page, which shows the requesting app and where access will be sent. Enter the owner password and choose **Allow**.
+
+- OAuth uses [`@cloudflare/workers-oauth-provider`](https://github.com/cloudflare/workers-oauth-provider): OAuth 2.1 with PKCE, RFC 8414 and RFC 9728 discovery, and tokens stored in KV only as hashes. Client ID Metadata Documents are not enabled; Dynamic Client Registration is.
+- Password attempts are limited to 5 per minute per IP address and Worker isolate.
+- The secret URL keeps working next to OAuth. To turn it off, remove the secret with `npx wrangler secret delete MCP_SECRET`.
+- Tokens are bound to the hostname used to connect, so a server reachable through several hostnames issues separate tokens for each.
+- OAuth uses KV: each sign-in and token refresh writes a few keys, well within the free 1,000 writes per day.
 
 ## Limits
 

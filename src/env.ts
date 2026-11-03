@@ -15,7 +15,7 @@ export interface RateLimitBinding {
 }
 
 export interface Env {
-  /** Secret path segment of the MCP endpoint (/mcp/<MCP_SECRET>). Required. */
+  /** Secret path segment of the MCP endpoint (/mcp/<MCP_SECRET>). Required unless OAuth is configured. */
   MCP_SECRET?: string;
   /** Enables Brave Search for web search. Optional. */
   BRAVE_API_KEY?: string;
@@ -35,4 +35,8 @@ export interface Env {
   RATE_LIMITER?: RateLimitBinding;
   /** Tool calls per minute for the in-memory fallback limiter; "0" disables it. Optional. */
   RATE_LIMIT_PER_MINUTE?: string;
+  /** KV namespace for OAuth clients, grants and tokens. Enables OAuth together with AUTH_PASSWORD. */
+  OAUTH_KV?: KVNamespace;
+  /** Owner password asked on the OAuth consent page (at least 12 characters). */
+  AUTH_PASSWORD?: string;
 }

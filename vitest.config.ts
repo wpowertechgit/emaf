@@ -8,6 +8,8 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.toml" },
+      // Real KV storage for the OAuth tests; production binds OAUTH_KV in wrangler.toml.
+      miniflare: { kvNamespaces: ["TEST_OAUTH_KV"] },
     }),
   ],
   test: {

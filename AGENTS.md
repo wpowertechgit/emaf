@@ -40,7 +40,7 @@ Never report a task as complete without running them. If one fails, fix it or sa
 
 ## Architecture rules
 
-- Transport: stateless MCP Streamable HTTP with JSON responses. No SSE, no sessions. The endpoint is `POST /mcp/<MCP_SECRET>`; every other path returns 404. Notifications return 202 with no body.
+- Transport: stateless MCP Streamable HTTP with JSON responses. No SSE, no sessions. The endpoint is `POST /mcp/<MCP_SECRET>`, plus `POST /mcp` with an OAuth bearer token when OAuth is configured (`OAUTH_KV` and `AUTH_PASSWORD`); the OAuth discovery, registration, token and `/authorize` routes exist only then. Every other path returns 404. Notifications return 202 with no body.
 - Tool failures return a result with `isError: true` and a readable message. JSON-RPC errors are only for protocol problems (unknown method, unknown tool, invalid request).
 - Subrequest budget: Workers Free allows 50 outbound requests per invocation. Every outbound call, including AI binding calls, goes through the shared budget accounting. Tools must degrade gracefully when the budget runs low and say so in their output.
 - Every external call has a timeout and a clear error message naming the service.

@@ -26,7 +26,8 @@ function perMinuteLimit(env: Env): number {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : DEFAULT_TOOL_CALLS_PER_MINUTE;
 }
 
-function allowInMemory(key: string, limit: number, now: number): boolean {
+/** Fixed one-minute window counter shared by tool calls and login attempts. */
+export function allowFixedWindow(key: string, limit: number, now: number): boolean {
   const current = windows.get(key);
   if (!current || now - current.start >= WINDOW_MS) {
     windows.set(key, { start: now, count: 1 });
@@ -55,5 +56,5 @@ export async function allowToolCall(env: Env, key: string, now = Date.now()): Pr
   }
   const limit = perMinuteLimit(env);
   if (limit === 0) return true;
-  return allowInMemory(key, limit, now);
+  return allowFixedWindow(key, limit, now);
 }

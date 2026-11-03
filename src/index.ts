@@ -2,57 +2,56 @@
  * emaf
  *
  * A stateless remote MCP server (Streamable HTTP transport, JSON responses)
- * running on Cloudflare Workers. Tools:
- *   - scrape: fetch one URL and return clean Markdown
- *   - map:    list the URLs found on a page and in the site's sitemap
- *   - crawl:  breadth-first crawl of a site, returning Markdown per page
- *   - search: web search (Brave API if configured, DuckDuckGo HTML otherwise)
+ * running on Cloudflare Workers, for web research from Claude.
  *
- * The endpoint is /mcp/<MCP_SECRET>. Any other path returns 404.
+ * Two ways to reach the MCP endpoint:
+ *   - /mcp/<MCP_SECRET>: the secret is part of the URL.
+ *   - /mcp with OAuth 2.1, when OAUTH_KV and AUTH_PASSWORD are configured.
+ * Any other path returns 404.
  */
 
 import type { Env } from "./env";
 import { handleMcpRequest } from "./mcp/http";
+import { getOAuthProvider, oauthEnabled, publicBaseUrl } from "./oauth";
+import { timingSafeEqual } from "./util";
 
 export type { Env } from "./env";
 
-function timingSafeEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const ab = enc.encode(a);
-  const bb = enc.encode(b);
-  let diff = ab.length ^ bb.length;
-  const len = Math.max(ab.length, bb.length);
-  for (let i = 0; i < len; i++) {
-    diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0);
+const notFound = () => new Response("Not found\n", { status: 404 });
+
+function handleSecretPath(request: Request, env: Env, encodedSecret: string): Response | Promise<Response> {
+  if (!env.MCP_SECRET) {
+    // With OAuth configured the secret URL is optional; without either, the server is misconfigured.
+    return oauthEnabled(env)
+      ? notFound()
+      : new Response("MCP_SECRET is not configured on this server.\n", { status: 500 });
   }
-  return diff === 0;
+  let providedSecret: string;
+  try {
+    providedSecret = decodeURIComponent(encodedSecret);
+  } catch {
+    // Malformed percent-encoding can never match the secret.
+    return notFound();
+  }
+  if (!timingSafeEqual(providedSecret, env.MCP_SECRET)) return notFound();
+  return handleMcpRequest(request, env, env.MCP_SECRET);
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/" || url.pathname === "/health") {
       return new Response("emaf is running.\n", { headers: { "Content-Type": "text/plain" } });
     }
 
-    const match = url.pathname.match(/^\/mcp\/([^/]+)\/?$/);
-    if (!match) return new Response("Not found\n", { status: 404 });
+    // Checked before OAuth: /mcp/<secret> lies under the OAuth resource path /mcp.
+    const secretMatch = url.pathname.match(/^\/mcp\/([^/]+)\/?$/);
+    if (secretMatch) return handleSecretPath(request, env, secretMatch[1]);
 
-    if (!env.MCP_SECRET) {
-      return new Response("MCP_SECRET is not configured on this server.\n", { status: 500 });
+    if (oauthEnabled(env)) {
+      return getOAuthProvider(publicBaseUrl(url)).fetch(request, env, ctx);
     }
-    let providedSecret: string;
-    try {
-      providedSecret = decodeURIComponent(match[1]);
-    } catch {
-      // Malformed percent-encoding can never match the secret.
-      return new Response("Not found\n", { status: 404 });
-    }
-    if (!timingSafeEqual(providedSecret, env.MCP_SECRET)) {
-      return new Response("Not found\n", { status: 404 });
-    }
-
-    return handleMcpRequest(request, env);
+    return notFound();
   },
 } satisfies ExportedHandler<Env>;

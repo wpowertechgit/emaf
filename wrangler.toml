@@ -29,13 +29,21 @@ compatibility_flags = ["nodejs_compat"]
 #   limit = 60
 #   period = 60
 
+# Optional: OAuth 2.1 login for the MCP endpoint (see README.md). Requires the
+# AUTH_PASSWORD secret too. Create the namespace with
+# `npx wrangler kv namespace create OAUTH_KV` and paste the id here.
+# [[kv_namespaces]]
+# binding = "OAUTH_KV"
+# id = "<namespace id>"
+
 # Optional plain variables.
 # [vars]
 # OPENALEX_MAILTO = "you@example.com"
 # RATE_LIMIT_PER_MINUTE = "60"
 
 # Secrets (set with `npx wrangler secret put <NAME>`):
-#   MCP_SECRET        required, the secret path segment of the MCP URL
+#   MCP_SECRET        the secret path segment of the MCP URL (required unless OAuth is configured)
+#   AUTH_PASSWORD     owner password for the OAuth consent page, 12+ characters (enables OAuth with OAUTH_KV)
 #   BRAVE_API_KEY     optional, enables Brave Search for web search
 #   GITHUB_TOKEN      optional, read-only token for prior_art (higher limits, code search)
 #   OPENALEX_API_KEY  optional, raises the OpenAlex daily budget for research
