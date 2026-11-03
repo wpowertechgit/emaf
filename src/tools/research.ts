@@ -210,7 +210,7 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
   const openAlexQueries = useAcademic
     ? [derived.keywords.join(" "), derived.natural].filter(Boolean).slice(0, settings.openAlexQueries)
     : [];
-  const arxivTerms = derived.keywords.slice(0, 4);
+  const arxivTerms = derived.keyTerms.slice(0, 4);
 
   const [webSettled, openAlexSettled, arxivSettled] = await Promise.all([
     Promise.allSettled(webQueries.map((q) => searchWeb(env, budget, q, settings.webResultsPerQuery))),

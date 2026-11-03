@@ -126,25 +126,32 @@ async function priorArt(args: Record<string, unknown>, ctx: ToolContext): Promis
   const searched: string[] = [];
   const languageQualifier = ecosystem.githubLanguage ? ` language:${ecosystem.githubLanguage}` : "";
 
+  // Most specific terms first (names, acronyms), generic words like "tool" last.
+  const terms = derived.keyTerms;
+  const scope = ` in:name,description,readme${languageQualifier}`;
   const repoQueries = Array.from(
     new Set([
-      `${derived.keywords.slice(0, 4).join(" ")} in:name,description,readme${languageQualifier}`,
-      `${(derived.phrases[0] ? `"${derived.phrases[0]}"` : derived.keywords.slice(0, 2).join(" "))} in:name,description,readme${languageQualifier}`,
+      `${terms.slice(0, 4).join(" ")}${scope}`,
+      `${derived.phrases[0] ? `"${derived.phrases[0]}"` : terms.slice(0, 2).join(" ")}${scope}`,
+      // Two or more names together ("obsidian rag") are often the best query of all.
+      ...(derived.names.length >= 2 ? [`${derived.names.slice(0, 3).join(" ")}${scope}`] : []),
     ]),
   );
+  const codeTerms = derived.names.length >= 2 ? derived.names.slice(0, 3) : terms.slice(0, 3);
+  // Package names are usually adjacent words of the description ("rate-limit"), so keep the original order.
   const pypiNames = ecosystem.pypi ? pypiNameGuesses(derived.keywords) : [];
 
   // 1. Search everything in parallel.
   const [repoSettled, codeSettled, npmSettled, pypiSettled] = await Promise.all([
     Promise.allSettled(repoQueries.map((q) => searchRepositories(env, budget, q, 10))),
     env.GITHUB_TOKEN
-      ? searchCodeRepositories(env, budget, `${derived.keywords.slice(0, 3).join(" ")}${languageQualifier}`, 20).then(
+      ? searchCodeRepositories(env, budget, `${codeTerms.join(" ")}${languageQualifier}`, 20).then(
           (v) => ({ ok: true as const, v }),
           (e: unknown) => ({ ok: false as const, e }),
         )
       : Promise.resolve(null),
     ecosystem.npm
-      ? searchNpm(budget, derived.keywords.slice(0, 5).join(" "), 10).then(
+      ? searchNpm(budget, terms.slice(0, 5).join(" "), 10).then(
           (v) => ({ ok: true as const, v }),
           (e: unknown) => ({ ok: false as const, e }),
         )

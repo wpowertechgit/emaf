@@ -190,3 +190,24 @@ describe("boilerplate detection", () => {
     expect(looksLikeCitationList("Smith et al. 2021; doi")).toBe(false);
   });
 });
+
+describe("deriveQueries term specificity", () => {
+  it("puts names and acronyms first and generic words last, even late in the text", () => {
+    const d = deriveQueries("Self-hosted tool that syncs Obsidian notes into a vector database for RAG", 6);
+    expect(d.names).toEqual(["obsidian", "rag"]);
+    expect(d.keyTerms).toEqual(["obsidian", "rag", "syncs", "notes", "vector", "database"]);
+    expect(d.keyTerms).not.toContain("tool");
+    // Plain keywords keep their original order for full-text search engines.
+    expect(d.keywords.slice(0, 3)).toEqual(["self", "hosted", "tool"]);
+  });
+
+  it("detects acronyms and mixed case but not the capital of the first word", () => {
+    const d = deriveQueries("Rate limit requests to PostgreSQL over HTTP");
+    expect(d.names).toEqual(["postgresql", "http"]);
+  });
+
+  it("prefers phrases that contain a name", () => {
+    const d = deriveQueries("A simple library to convert PDF files to Markdown");
+    expect(d.phrases[0]).toBe("convert pdf files");
+  });
+});

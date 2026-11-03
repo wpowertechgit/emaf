@@ -25,12 +25,22 @@ describe("prior_art", () => {
     expect(mock.unexpected).toEqual([]);
 
     const repoSearch = new URL(mock.requested.find((u) => u.includes("/search/repositories")) ?? "");
-    expect(repoSearch.searchParams.get("q")).toBe("rate limit http requests in:name,description,readme");
+    expect(repoSearch.searchParams.get("q")).toBe("http api rate limit in:name,description,readme");
     expect(mock.headers.get(repoSearch.href)?.get("User-Agent")).toMatch(/^emaf/);
     expect(mock.requested.some((u) => u.includes("/search/code"))).toBe(false);
     expect(mock.requested).toContain("https://pypi.org/pypi/rate-limit/json");
     expect(text).toContain("GitHub code search (skipped: requires GITHUB_TOKEN)");
     expect(text).toContain("found rate-limit; PyPI has no search API");
+  });
+
+  it("adds a names-only query when the description has several names", async () => {
+    const mock = mockFetch(PRIOR_ART_ROUTES);
+    await callTool("prior_art", { description: "Self-hosted tool that syncs Obsidian notes into a vector database for RAG" });
+    const queries = mock.requested
+      .filter((u) => u.includes("/search/repositories"))
+      .map((u) => new URL(u).searchParams.get("q"));
+    expect(queries).toContain("obsidian rag in:name,description,readme");
+    expect(queries[0]).toBe("obsidian rag syncs notes in:name,description,readme");
   });
 
   it("ranks projects by where the README mentions the feature", async () => {
