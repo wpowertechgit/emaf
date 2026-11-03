@@ -2,6 +2,7 @@ import { CRAWL_CONCURRENCY, MAX_CRAWL_PAGES, SKIP_EXTENSIONS } from "../config";
 import type { ToolContext } from "../context";
 import { extractPage } from "../extract";
 import { fetchPage } from "../fetch";
+import { type RobotsPolicy, fetchRobotsPolicy } from "../robots";
 import { clampNumber, errorMessage, requireHttpUrl, truncate } from "../util";
 import type { Tool } from "./types";
 
@@ -11,12 +12,25 @@ async function crawl(args: Record<string, unknown>, ctx: ToolContext): Promise<s
   const maxDepth = clampNumber(args.maxDepth, 2, 0, 10);
   const pathPrefix = typeof args.pathPrefix === "string" ? args.pathPrefix : "";
   const maxCharsPerPage = clampNumber(args.maxCharsPerPage, 8000, 200, 50_000);
+  const respectRobots = args.respectRobots === true;
 
   start.hash = "";
   const seen = new Set<string>([start.href]);
   let frontier: string[] = [start.href];
   const results: { url: string; title: string; markdown: string }[] = [];
   const errors: string[] = [];
+  const disallowed: string[] = [];
+
+  const robots: RobotsPolicy | null = respectRobots ? await fetchRobotsPolicy(start.origin, ctx.budget) : null;
+  const robotsAllows = (candidate: string): boolean => {
+    if (!robots) return true;
+    const u = new URL(candidate);
+    return robots.isAllowed(u.pathname + u.search);
+  };
+  if (!robotsAllows(start.href)) {
+    disallowed.push(start.href);
+    frontier = [];
+  }
 
   const shouldFollow = (candidate: string): boolean => {
     const u = new URL(candidate);
@@ -56,10 +70,10 @@ async function crawl(args: Record<string, unknown>, ctx: ToolContext): Promise<s
         });
         if (depth < maxDepth) {
           for (const link of extracted.links) {
-            if (!seen.has(link) && shouldFollow(link)) {
-              seen.add(link);
-              nextFrontier.push(link);
-            }
+            if (seen.has(link) || !shouldFollow(link)) continue;
+            seen.add(link);
+            if (robotsAllows(link)) nextFrontier.push(link);
+            else disallowed.push(link);
           }
         }
       });
@@ -73,6 +87,12 @@ async function crawl(args: Record<string, unknown>, ctx: ToolContext): Promise<s
   ];
   for (const r of results) {
     parts.push(`\n---\n\n# ${r.title || r.url}\nURL: ${r.url}\n\n${r.markdown}`);
+  }
+  if (robots?.note) parts.push(robots.note);
+  if (disallowed.length) {
+    const shown = disallowed.slice(0, 20).map((u) => `- ${u}`);
+    if (disallowed.length > 20) shown.push(`- ... and ${disallowed.length - 20} more`);
+    parts.push(`Skipped ${disallowed.length} URL(s) disallowed by robots.txt:\n${shown.join("\n")}`);
   }
   if (errors.length) {
     parts.push(`\n---\n\n## Failed\n${errors.map((e) => `- ${e}`).join("\n")}`);
@@ -104,6 +124,11 @@ export const crawlTool: Tool = {
         maxCharsPerPage: {
           type: "number",
           description: "Truncate each page's Markdown to this many characters. Defaults to 8000.",
+        },
+        respectRobots: {
+          type: "boolean",
+          description:
+            "Fetch the site's robots.txt first and skip URLs it disallows. Costs one extra request. Defaults to false.",
         },
       },
       required: ["url"],
