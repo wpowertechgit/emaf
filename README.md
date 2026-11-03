@@ -1,6 +1,6 @@
 # EMAF
 
-Web research tools for Claude, as a self-hosted MCP server on Cloudflare Workers.
+**Extract Markdown And Facts.** Web research tools for Claude, as a self-hosted MCP server on Cloudflare Workers.
 
 Ask a question and get the relevant passages from web pages, papers and preprints, ranked and cited. Ask whether something already exists and get the open-source projects that do it, with the README line that proves it. Read any URL or PDF as clean Markdown.
 
@@ -82,3 +82,7 @@ npm test
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
