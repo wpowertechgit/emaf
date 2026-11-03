@@ -55,6 +55,61 @@ function prepareTables(root: Element): void {
   }
 }
 
+const LANGUAGE_CLASS = /^(?:language|lang|highlight-source)-([\w#+.-]+)$/i;
+const NO_LANGUAGE = new Set(["none", "plain", "plaintext", "nohighlight"]);
+
+function languageFromClasses(el: Element | null): string {
+  for (const cls of (el?.getAttribute("class") ?? "").split(/\s+/)) {
+    const m = cls.match(LANGUAGE_CLASS);
+    if (m) return m[1].toLowerCase();
+  }
+  return "";
+}
+
+function languageOf(pre: Element, code: Element | null): string {
+  const dataLang =
+    pre.getAttribute("data-lang") ??
+    pre.getAttribute("data-language") ??
+    code?.getAttribute("data-lang") ??
+    code?.getAttribute("data-language") ??
+    "";
+  const lang =
+    languageFromClasses(code) ||
+    languageFromClasses(pre) ||
+    dataLang.trim().toLowerCase() ||
+    languageFromClasses(pre.parentElement);
+  return NO_LANGUAGE.has(lang) || !/^[\w#+.-]+$/.test(lang) ? "" : lang;
+}
+
+/**
+ * Rewrites every code block to `<pre><code class="language-x">`, the shape
+ * Turndown's fenced code rule reads, collecting the language from the many
+ * forms highlighters use. Returns the classes Readability must preserve,
+ * since it strips class attributes otherwise.
+ */
+function normalizeCodeBlocks(document: Document): string[] {
+  const preserved = new Set<string>();
+  for (const pre of Array.from(document.querySelectorAll("pre"))) {
+    let code = pre.querySelector("code");
+    const lang = languageOf(pre, code);
+    if (!code || pre.children.length !== 1 || pre.firstElementChild !== code) {
+      // Highlighter spans or bare text: flatten into a single code element.
+      const replacement = document.createElement("code");
+      replacement.textContent = pre.textContent ?? "";
+      pre.textContent = "";
+      pre.appendChild(replacement);
+      code = replacement;
+    }
+    if (lang) {
+      code.setAttribute("class", `language-${lang}`);
+      preserved.add(`language-${lang}`);
+    } else {
+      code.removeAttribute("class");
+    }
+  }
+  return Array.from(preserved);
+}
+
 function wrapFragment(fragmentHtml: string): string {
   return `<!doctype html><html><head></head><body>${fragmentHtml}</body></html>`;
 }
@@ -104,6 +159,8 @@ export function extractPage(html: string, pageUrl: string, onlyMainContent: bool
     el.remove();
   }
 
+  const codeClasses = normalizeCodeBlocks(document as unknown as Document);
+
   const title = (document.querySelector("title")?.textContent ?? "").trim();
   let contentHtml: string | null = null;
 
@@ -112,6 +169,7 @@ export function extractPage(html: string, pageUrl: string, onlyMainContent: bool
       const { document: readable } = parseHTML(document.toString());
       const article = new Readability(readable as unknown as Document, {
         keepClasses: false,
+        classesToPreserve: codeClasses,
       }).parse();
       if (article?.content && (article.textContent ?? "").trim().length > 200) {
         contentHtml = article.content;

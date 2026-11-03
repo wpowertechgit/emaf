@@ -91,7 +91,6 @@ Workers AI limits on the Workers Free plan (from the Cloudflare docs, checked No
 - Without rendering, pages that build their content entirely in JavaScript come back mostly empty. Use `render: true` for those.
 - Only text responses are processed. Binary content such as PDFs and images is rejected; `research` uses the search snippet for PDF results.
 - Sites behind aggressive bot protection may still block requests.
-- With `onlyMainContent` (the default), the language hint of code blocks is lost because Readability strips class attributes.
 
 ## Development
 

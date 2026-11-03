@@ -75,6 +75,24 @@ console.log(answer);</code></pre>
   `,
 });
 
+/** Code blocks marked up the way common highlighters and site generators do it. */
+export const CODE_VARIANTS_HTML = page({
+  title: "Code variants",
+  heading: "Code variants",
+  content: `
+    <p>A pre element with the language class and no code child:</p>
+    <pre class="language-python">print('pre class')</pre>
+    <p>A data-lang attribute, as used by some static site generators:</p>
+    <pre data-lang="rust"><code>fn data_lang() {}</code></pre>
+    <p>GitHub style highlighting wrapper:</p>
+    <div class="highlight highlight-source-go"><pre><span class="pl-k">func</span> githubHighlight() {}</pre></div>
+    <p>A lang- prefix on the code element, together with a highlighter class:</p>
+    <pre><code class="hljs lang-bash">echo lang-prefix</code></pre>
+    <p>A block without any language hint:</p>
+    <pre><code>plain block without a language</code></pre>
+  `,
+});
+
 /** Page without enough text for Readability, so the chrome-stripping fallback is used. */
 export const SHORT_PAGE_HTML = `<!doctype html>
 <html><head><title>Short</title></head>

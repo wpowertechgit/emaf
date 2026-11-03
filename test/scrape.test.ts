@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ARTICLE_HTML, SHORT_PAGE_HTML, SITE } from "./fixtures";
+import { ARTICLE_HTML, CODE_VARIANTS_HTML, SHORT_PAGE_HTML, SITE } from "./fixtures";
 import { callTool, mockFetch, testEnv } from "./helpers";
 
 const ARTICLE_URL = `${SITE}/docs/start/index.html`;
@@ -33,11 +33,20 @@ describe("scrape", () => {
     expect(text).toMatch(/\| Name \| Value \|\n\| --- \| --- \|\n\| timeout \| 20 \|\n\| retries \| 3 \|/);
   });
 
-  it("converts code blocks to fenced blocks", async () => {
+  it("converts code blocks to fenced blocks with the language", async () => {
     mockFetch({ [ARTICLE_URL]: ARTICLE_HTML });
     const { text } = await callTool("scrape", { url: ARTICLE_URL });
-    // Readability drops class attributes, so the language hint is currently lost.
-    expect(text).toContain("```\nconst answer: number = 42;\nconsole.log(answer);\n```");
+    expect(text).toContain("```ts\nconst answer: number = 42;\nconsole.log(answer);\n```");
+  });
+
+  it("detects code languages from common highlighter markup", async () => {
+    mockFetch({ [`${SITE}/code`]: CODE_VARIANTS_HTML });
+    const { text } = await callTool("scrape", { url: `${SITE}/code` });
+    expect(text).toContain("```python\nprint('pre class')\n```");
+    expect(text).toContain("```rust\nfn data_lang() {}\n```");
+    expect(text).toContain("```go\nfunc githubHighlight() {}\n```");
+    expect(text).toContain("```bash\necho lang-prefix\n```");
+    expect(text).toContain("```\nplain block without a language\n```");
   });
 
   it("keeps the code block language when Readability is not used", async () => {
