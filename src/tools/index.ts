@@ -1,3 +1,4 @@
+import { batchScrapeTool } from "./batch-scrape";
 import { crawlTool } from "./crawl";
 import { mapTool } from "./map";
 import { priorArtTool } from "./prior-art";
@@ -6,7 +7,7 @@ import { scrapeTool } from "./scrape";
 import { searchTool } from "./search";
 import type { Tool, ToolDefinition, ToolHandler } from "./types";
 
-const TOOLS: Tool[] = [researchTool, priorArtTool, scrapeTool, mapTool, crawlTool, searchTool];
+const TOOLS: Tool[] = [researchTool, priorArtTool, scrapeTool, batchScrapeTool, mapTool, crawlTool, searchTool];
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = TOOLS.map((t) => t.definition);
 

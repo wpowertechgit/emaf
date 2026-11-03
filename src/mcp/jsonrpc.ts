@@ -13,7 +13,7 @@ export interface JsonRpcRequest {
 }
 
 const SERVER_INSTRUCTIONS =
-  "Research and web reading tools. Use `research` to look into a question or fact-check a claim (ranked passages from web pages, papers and preprints), `prior_art` to find existing open-source projects or packages for a feature, `scrape` to read one URL in full, `crawl` to read several pages of one site, `map` to list a site's URLs, and `search` for raw web search results.";
+  "Research and web reading tools. Use `research` to look into a question or fact-check a claim (ranked passages from web pages, papers and preprints), `prior_art` to find existing open-source projects or packages for a feature, `scrape` to read one URL in full, `batch_scrape` to read a list of URLs, `crawl` to read several pages of one site, `map` to list a site's URLs, and `search` for raw web search results.";
 
 export function rpcResult(id: JsonRpcId, result: unknown) {
   return { jsonrpc: "2.0", id, result };

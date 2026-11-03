@@ -171,7 +171,7 @@ describe("JSON-RPC handling", () => {
     const body = (await response.json()) as {
       result: { tools: { name: string; inputSchema: { type: string; required: string[] } }[] };
     };
-    expect(body.result.tools.map((t) => t.name)).toEqual(["research", "prior_art", "scrape", "map", "crawl", "search"]);
+    expect(body.result.tools.map((t) => t.name)).toEqual(["research", "prior_art", "scrape", "batch_scrape", "map", "crawl", "search"]);
     for (const tool of body.result.tools) {
       expect(tool.inputSchema.type).toBe("object");
       expect(tool.inputSchema.required.length).toBeGreaterThan(0);
