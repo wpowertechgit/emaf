@@ -145,7 +145,11 @@ describe("research", () => {
 
   it("falls back to BM25 when the embedding call fails", async () => {
     mockFetch(RESEARCH_ROUTES);
-    const ai: AiBinding = { run: async () => Promise.reject(new Error("daily neuron limit reached")) };
+    const ai: AiBinding = {
+      run: async () => {
+        throw new Error("daily neuron limit reached");
+      },
+    };
     const text = await researchTool.handler({ question: QUESTION }, { env: testEnv({ AI: ai }), budget: new Budget() });
     expect(text).toContain("Embedding rerank failed, using BM25 only: daily neuron limit reached");
     expect(text).toContain("Ranking: BM25\n");
