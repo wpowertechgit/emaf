@@ -289,9 +289,21 @@ describe("OAuth", () => {
     expect(response.status).toBe(200);
     expect(html).toContain("&#60;script&#62;");
     expect(html).not.toContain("<script>");
-    expect(html).toContain("<strong>claude.test</strong>");
-    expect(html).toContain("This app registered itself; its name is not verified.");
+    expect(html).toContain("<dt>Access goes to</dt><dd>claude.test</dd>");
+    expect(html).toContain('title="The app registered itself; its name is not verified.">unverified</span>');
     expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+  });
+
+  it("does not block the redirect back to the client after the form is submitted", async () => {
+    // Browsers apply CSP form-action to redirects that follow a form submission,
+    // so form-action 'self' would stop the browser from returning to the client.
+    const env = oauthEnv();
+    const clientId = await registerClient(env);
+    const consent = await openConsent(env, clientId, (await pkce()).challenge);
+    expect(consent.response.headers.get("Content-Security-Policy")).not.toContain("form-action");
+    const wrong = await submitConsent(env, consent, { decision: "approve", password: "nope" });
+    expect(wrong.headers.get("Content-Security-Policy")).not.toContain("form-action");
   });
 
   it("refuses a wrong password and lets the owner retry", async () => {

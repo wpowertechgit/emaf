@@ -21,3 +21,7 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+tmp
+# Browser automation output
+.playwright-mcp/
