@@ -13,7 +13,7 @@ A self-hosted alternative to Firecrawl: a remote [MCP](https://modelcontextproto
 | --- | --- | --- |
 | `research` | "Look into X", fact-checking, "what is known about X" | Derives 2-4 search queries from the question, searches the web, [OpenAlex](https://openalex.org) and [arXiv](https://arxiv.org) in parallel, reads the top web pages, splits everything into passages, ranks them with BM25 (optionally reranked by embeddings), removes near-duplicates and returns the best passages grouped by source. Papers include authors, venue, citation count and DOI; preprints are marked as not peer reviewed. Options: `depth` (`quick`, `normal`, `deep`), `sources` (`web`, `academic`, `all`), `maxChars` (default 12000). |
 | `prior_art` | "Does something like this exist?", "is there a library for X?" | Searches GitHub repositories (plus GitHub code search with a token), npm and PyPI, reads each candidate's README and quotes the passage most relevant to the description. Reports stars, last push, archived flag, license and open issues, and flags projects without a push in 12+ months. Options: `language` (for example `python`, `typescript`, `rust`), `limit` (default 8), `maxChars`. |
-| `scrape` | Reading one specific URL | Fetches one URL and returns Markdown, plain text or cleaned HTML. Strips navigation, headers, footers and scripts by default (`onlyMainContent`). `render: true` loads the page in a headless browser first (requires Browser Rendering). `includeLinks` appends every link on the page. |
+| `scrape` | Reading one specific URL | Fetches one URL and returns Markdown, plain text or cleaned HTML. Strips navigation, headers, footers and scripts by default (`onlyMainContent`). `render: true` loads the page in a headless browser first (requires Browser Rendering). `includeLinks` appends every link on the page. With a KV cache configured, results are cached; `cacheTtl` sets the maximum age in seconds (default 3600, `0` for a fresh copy). |
 | `batch_scrape` | Reading a list of known URLs | Reads up to 20 URLs, possibly from different sites, in one call and returns each as Markdown or text. Duplicates (including fragment variants) are fetched once, failures are listed per URL, and URLs beyond the subrequest budget are reported as skipped. Options: `format`, `onlyMainContent`, `maxCharsPerPage` (default 8000), `maxChars` (default 40000). |
 | `crawl` | Reading several pages of one site | Breadth-first crawl of a single host, returning Markdown per page. Options: `limit` (up to 40 pages), `maxDepth`, `pathPrefix` (for example `/docs/`), `maxCharsPerPage` and `respectRobots` (fetch robots.txt first and skip disallowed URLs, following RFC 9309). |
 | `map` | Finding the right page on a known site | Lists the URLs linked from a page plus the entries of the site's `/sitemap.xml`. Supports a substring filter (`search`), `sameDomainOnly` and `limit`. |
@@ -65,6 +65,7 @@ All of these are optional; every tool works without them.
 | `OPENALEX_API_KEY` | secret | Free [OpenAlex](https://openalex.org) API key. Keyless use works (10 requests per second); a key raises the daily budget tenfold. |
 | `OPENALEX_MAILTO` | variable | Contact address sent to OpenAlex as `mailto`. |
 | `AI` | binding | [Workers AI](https://developers.cloudflare.com/workers-ai/). Enables the embedding rerank stage of `research`. |
+| `CACHE` | binding | [Workers KV](https://developers.cloudflare.com/kv/) namespace that caches `scrape` results. |
 | `BROWSER` | binding | [Browser Rendering](https://developers.cloudflare.com/browser-rendering/). Enables `render: true` on `scrape`. |
 
 Secrets are set with `npx wrangler secret put <NAME>`. Bindings and variables are configured in `wrangler.toml` (commented examples are included).
@@ -79,6 +80,18 @@ Workers AI limits on the Workers Free plan (from the Cloudflare docs, checked No
 - `bge-base-en-v1.5` costs 6,058 neurons per million input tokens. One rerank embeds roughly 10,000 to 12,000 tokens, about 60 to 75 neurons, so the free allocation covers roughly 130 reranked `research` calls per day.
 - Text embedding models are limited to 3,000 requests per minute.
 - The model is English-focused and accepts up to 512 tokens per input; passages are clipped to 350 words.
+
+### Scrape cache (Workers KV)
+
+Create a namespace and add the commented `[[kv_namespaces]]` block in `wrangler.toml` with its id:
+
+```bash
+npx wrangler kv namespace create CACHE
+```
+
+`scrape` then stores each successful result under a hash of the URL and the output options, with `cacheTtl` seconds of expiry (default 3600, minimum 60), and serves later calls from the cache while the copy is younger than `cacheTtl`. Cached responses start with a note giving their age. Error pages are not cached, and a failing cache never fails a scrape.
+
+KV is included in Workers Free: 100,000 reads, 1,000 writes and 1 GB of storage per day (from the Cloudflare docs, checked November 2026). Every cache miss is one write, so the free plan caches up to 1,000 new pages per day; beyond that, writes fail and `scrape` keeps working uncached. KV reads and writes count as subrequests and are included in the budget.
 
 ## Limits
 

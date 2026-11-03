@@ -13,6 +13,12 @@ compatibility_flags = ["nodejs_compat"]
 # [ai]
 # binding = "AI"
 
+# Optional: KV namespace that caches scrape results (see README.md).
+# Create it with `npx wrangler kv namespace create CACHE` and paste the id here.
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "<namespace id>"
+
 # Optional plain variables.
 # [vars]
 # OPENALEX_MAILTO = "you@example.com"

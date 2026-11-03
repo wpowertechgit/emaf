@@ -3,6 +3,12 @@ export interface AiBinding {
   run(model: string, inputs: Record<string, unknown>): Promise<unknown>;
 }
 
+/** The subset of a Workers KV namespace binding that EMAF uses. */
+export interface KvBinding {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
+
 export interface Env {
   /** Secret path segment of the MCP endpoint (/mcp/<MCP_SECRET>). Required. */
   MCP_SECRET?: string;
@@ -18,4 +24,6 @@ export interface Env {
   BROWSER?: Fetcher;
   /** Workers AI binding, enables embedding rerank in research. Optional. */
   AI?: AiBinding;
+  /** KV namespace for cached scrape results. Optional. */
+  CACHE?: KvBinding;
 }
