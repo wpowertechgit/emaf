@@ -25,6 +25,24 @@ const SERVER_INSTRUCTIONS =
 const RATE_LIMITED_MESSAGE =
   "Error: Rate limit reached for this server. Wait about a minute before calling tools again.";
 
+/**
+ * One log line per request: the method, and for tool calls the tool and the
+ * argument names. Argument values are never logged, since they carry the
+ * user's questions and URLs.
+ */
+export function describeForLog(method: string, params: Record<string, unknown>): string {
+  if (method !== "tools/call") return `mcp ${method}`;
+  const tool = typeof params.name === "string" ? params.name.replace(/[^\w-]/g, "").slice(0, 40) : "?";
+  const args =
+    params.arguments && typeof params.arguments === "object"
+      ? Object.keys(params.arguments)
+          .map((k) => k.replace(/[^\w-]/g, "").slice(0, 30))
+          .slice(0, 12)
+          .join(",")
+      : "";
+  return `mcp tools/call tool=${tool} args=${args}`;
+}
+
 export function rpcResult(id: JsonRpcId, result: unknown) {
   return { jsonrpc: "2.0", id, result };
 }
@@ -56,6 +74,7 @@ export async function handleMessage(message: JsonRpcRequest, ctx: ToolContext): 
   if (!hasId) return null;
 
   const params = message.params ?? {};
+  console.log(describeForLog(message.method, params));
 
   switch (message.method) {
     case "initialize": {

@@ -228,3 +228,20 @@ describe("JSON-RPC handling", () => {
     expect(body.result.content[0].text).toBe("Error: Only http and https URLs are supported.");
   });
 });
+
+describe("request logging", () => {
+  it("logs the method, tool and argument names but never argument values", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await postMcp({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "scrape", arguments: { url: "ftp://private.test/secret-path", "bad key!": 1 } },
+    });
+    await postMcp({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+    const lines = log.mock.calls.map((c) => String(c[0]));
+    expect(lines).toContain("mcp tools/call tool=scrape args=url,badkey");
+    expect(lines).toContain("mcp tools/list");
+    expect(lines.join("\n")).not.toContain("private.test");
+  });
+});
