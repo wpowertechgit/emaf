@@ -32,7 +32,7 @@ export async function rerankByEmbedding(
   query: string,
   passages: string[],
 ): Promise<{ order: number[]; similarities: number[] }> {
-  budget.take();
+  budget.takeInternal();
   const result = (await ai.run(EMBEDDING_MODEL, { text: [query, ...passages.map(clip)] })) as {
     data?: number[][];
   };

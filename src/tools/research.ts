@@ -3,7 +3,7 @@ import { type Paper, searchOpenAlex } from "../clients/openalex";
 import { type WebResult, searchWeb } from "../clients/websearch";
 import { EMBEDDING_MODEL } from "../config";
 import type { ToolContext } from "../context";
-import { extractPage } from "../extract";
+import { aiHtmlToMarkdown, fastHtmlText } from "../convert";
 import { fetchPage } from "../fetch";
 import { rankBm25 } from "../rank/bm25";
 import { chunkMarkdown } from "../rank/chunk";
@@ -63,6 +63,8 @@ const DEPTHS: Record<Depth, DepthSettings> = {
 
 /** How many top BM25 passages the optional embedding stage reorders. */
 const RERANK_POOL = 30;
+/** Text kept per page: enough to find the best passages, and keeps chunking and ranking cheap. */
+const MAX_PAGE_TEXT = 60_000;
 const MAX_PASSAGE_CHARS = 1500;
 
 interface Source {
@@ -238,9 +240,8 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
   // 2. Read the top web results within the remaining subrequest budget.
   const paperUrls = new Set(papers.map((p) => normalizeUrlKey(p.url)));
   const webCandidates = webResults.filter((r) => !paperUrls.has(normalizeUrlKey(r.url)));
-  const reserveForRerank = env.AI ? 1 : 0;
   const readable = webCandidates.filter((r) => !/\.pdf(?:$|\?)/i.test(r.url));
-  const pagesAllowed = Math.max(0, Math.min(settings.pagesToRead, budget.remaining - reserveForRerank));
+  const pagesAllowed = Math.max(0, Math.min(settings.pagesToRead, budget.remaining));
   if (pagesAllowed < Math.min(settings.pagesToRead, readable.length)) {
     notes.push(
       `Subrequest budget is low: read ${pagesAllowed} of ${Math.min(settings.pagesToRead, readable.length)} planned pages; the rest use search snippets.`,
@@ -249,22 +250,37 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
   const toRead = readable.slice(0, pagesAllowed);
   const pageSettled = await Promise.allSettled(toRead.map((r) => fetchPage(r.url, ctx)));
 
+  // Convert pages without a DOM: Workers AI when bound (no CPU cost here), local fast extraction otherwise.
+  let convertedByAi = 0;
+  const textByUrl = new Map<string, { text: string; finalUrl: string }>();
+  await Promise.all(
+    toRead.map(async (result, i) => {
+      const outcome = pageSettled[i];
+      if (outcome.status !== "fulfilled" || outcome.value.status >= 400) return;
+      const page = outcome.value;
+      let text = page.body;
+      if (page.isHtml) {
+        const viaAi = await aiHtmlToMarkdown(env.AI, budget, page.body, page.url);
+        if (viaAi !== null) convertedByAi++;
+        text = viaAi ?? fastHtmlText(page.body, MAX_PAGE_TEXT);
+      }
+      textByUrl.set(result.url, { text: text.slice(0, MAX_PAGE_TEXT), finalUrl: page.url });
+    }),
+  );
+
   // 3. Build passages.
   const candidates: Candidate[] = [];
-  const pageByUrl = new Map(toRead.map((r, i) => [r.url, pageSettled[i]]));
   let pagesRead = 0;
   for (const result of webCandidates) {
-    const outcome = pageByUrl.get(result.url);
+    const page = textByUrl.get(result.url);
     const source: Source = { kind: "web", title: result.title || result.url, url: result.url, date: "" };
     let chunks: { section: string; text: string }[] = [];
-    if (outcome?.status === "fulfilled" && outcome.value.status < 400) {
-      const page = outcome.value;
-      const markdown = page.isHtml ? extractPage(page.body, page.url, true).markdown : page.body;
-      chunks = chunkMarkdown(markdown);
+    if (page) {
+      chunks = chunkMarkdown(page.text);
       if (chunks.length) {
         pagesRead++;
         source.readFully = true;
-        source.url = page.url;
+        source.url = page.finalUrl;
       }
     }
     if (chunks.length === 0 && result.snippet) {
@@ -298,7 +314,7 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
   ).map((r) => r.item);
   let ranking = "BM25";
   if (env.AI && ranked.length > 1) {
-    if (budget.remaining > 0) {
+    if (budget.remainingInternal > 0) {
       const pool = ranked.slice(0, RERANK_POOL);
       try {
         const { order } = await rerankByEmbedding(
@@ -336,6 +352,17 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
     `Queries: ${derived.queries.map((q) => `[${q}]`).join(" ")}`,
     `Searched: ${searched.join(", ")}`,
     `Ranking: ${ranking}`,
+    ...(pagesRead
+      ? [
+          `Page conversion: ${
+            convertedByAi === pagesRead
+              ? "Workers AI Markdown Conversion"
+              : convertedByAi > 0
+                ? `Workers AI for ${convertedByAi}, local text extraction for ${pagesRead - convertedByAi}`
+                : "local text extraction"
+          }`,
+        ]
+      : []),
     `Subrequests used: ${budget.used} of ${budget.limit}`,
   ];
   if (notes.length) header.push("", "Notes:", ...notes.map((n) => `- ${n}`));

@@ -101,12 +101,14 @@ describe("scrape cache", () => {
     expect(puts[0].ttl).toBe(60);
   });
 
-  it("counts KV reads and writes against the subrequest budget", async () => {
+  it("counts KV reads and writes against the Cloudflare services budget", async () => {
     const { kv } = fakeKv();
     mockFetch({ [URL_A]: ARTICLE_HTML });
     const budget = new Budget();
     await scrapeTool.handler({ url: URL_A }, { env: testEnv({ CACHE: kv }), budget });
-    expect(budget.used).toBe(3);
+    // One external fetch; the KV read and write count as calls to Cloudflare services.
+    expect(budget.used).toBe(1);
+    expect(budget.usedInternal).toBe(2);
   });
 
   it("still scrapes when KV fails", async () => {

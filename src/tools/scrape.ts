@@ -1,6 +1,6 @@
 import { MAX_CACHE_TTL, cacheGet, cacheKey, cachePut } from "../cache";
 import type { ToolContext } from "../context";
-import { extractPage } from "../extract";
+import { convertForReading } from "../convert";
 import { fetchPage } from "../fetch";
 import { pdfOutput } from "../pdf";
 import { ToolError, clampNumber, requireHttpUrl, truncate } from "../util";
@@ -32,13 +32,15 @@ async function fetchAndRender(
     return { output: `${header.join("\n")}\n\n${page.body}`, cacheable: page.status < 400 };
   }
 
-  const extracted = extractPage(page.body, page.url, options.onlyMainContent);
-  const content =
-    options.format === "html" ? extracted.html : options.format === "text" ? extracted.text : extracted.markdown;
+  const converted = await convertForReading(page.body, page.url, ctx.env.AI, ctx.budget, {
+    format: options.format,
+    onlyMainContent: options.onlyMainContent,
+    needLinks: options.includeLinks,
+  });
 
-  let output = `${extracted.title ? `# ${extracted.title}\n` : ""}${header.join("\n")}\n\n${content}`;
-  if (options.includeLinks && extracted.links.length > 0) {
-    output += `\n\n## Links\n${extracted.links.map((l) => `- ${l}`).join("\n")}`;
+  let output = `${converted.title ? `# ${converted.title}\n` : ""}${header.join("\n")}\n\n${converted.content}`;
+  if (options.includeLinks && converted.links.length > 0) {
+    output += `\n\n## Links\n${converted.links.map((l) => `- ${l}`).join("\n")}`;
   }
   if (page.status >= 400) {
     output = `Warning: the server responded with HTTP ${page.status}.\n\n${output}`;

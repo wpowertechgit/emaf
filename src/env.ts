@@ -1,6 +1,19 @@
+/** One result of Workers AI Markdown Conversion. */
+export interface ToMarkdownResult {
+  name?: string;
+  format: "markdown" | "text" | "error";
+  data?: string;
+  error?: string;
+}
+
 /** The subset of the Workers AI binding that EMAF uses. */
 export interface AiBinding {
   run(model: string, inputs: Record<string, unknown>): Promise<unknown>;
+  /** Markdown Conversion, which runs on Cloudflare and is free for HTML. */
+  toMarkdown?(
+    document: { name: string; blob: Blob },
+    options?: { conversionOptions?: Record<string, unknown> },
+  ): Promise<ToMarkdownResult | ToMarkdownResult[]>;
 }
 
 /** The subset of a Workers KV namespace binding that EMAF uses. */

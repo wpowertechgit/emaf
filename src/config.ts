@@ -10,10 +10,13 @@ export const FETCH_TIMEOUT_MS = 20_000;
 export const API_TIMEOUT_MS = 15_000;
 
 /**
- * Workers Free allows 50 outbound subrequests per invocation. Redirects and
- * binding calls may also count, so keep headroom.
+ * Workers Free allows 50 external subrequests per invocation. Redirects may
+ * also count, so keep headroom.
  */
 export const SUBREQUEST_BUDGET = 45;
+
+/** Workers Free allows 1,000 subrequests to Cloudflare services (KV, Workers AI) per invocation. */
+export const INTERNAL_SUBREQUEST_BUDGET = 900;
 
 // Crawl stays below the budget so a crawl never fails on accounting alone.
 export const MAX_CRAWL_PAGES = 40;

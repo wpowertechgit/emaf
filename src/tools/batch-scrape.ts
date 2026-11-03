@@ -1,5 +1,5 @@
 import type { ToolContext } from "../context";
-import { extractPage } from "../extract";
+import { convertForReading } from "../convert";
 import { fetchPage } from "../fetch";
 import { pdfOutput } from "../pdf";
 import { ToolError, clampNumber, errorMessage, normalizeUrl, requireHttpUrl, truncate } from "../util";
@@ -32,10 +32,13 @@ async function scrapeOne(
     if (!page.isHtml) {
       return { url, ok: true, text: `URL: ${page.url}\n\n${truncate(page.body, maxCharsPerPage)}` };
     }
-    const extracted = extractPage(page.body, page.url, onlyMainContent);
-    const content = format === "text" ? extracted.text : extracted.markdown;
-    const title = extracted.title ? `# ${extracted.title}\n` : "";
-    return { url, ok: true, text: `${title}URL: ${page.url}\n\n${truncate(content, maxCharsPerPage)}` };
+    const converted = await convertForReading(page.body, page.url, ctx.env.AI, ctx.budget, {
+      format,
+      onlyMainContent,
+      needLinks: false,
+    });
+    const title = converted.title ? `# ${converted.title}\n` : "";
+    return { url, ok: true, text: `${title}URL: ${page.url}\n\n${truncate(converted.content, maxCharsPerPage)}` };
   } catch (err) {
     return { url, ok: false, text: errorMessage(err) };
   }

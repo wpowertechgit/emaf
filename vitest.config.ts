@@ -8,6 +8,8 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.toml" },
+      // Tests pass their own fake bindings; never connect to Cloudflare (CI has no credentials).
+      remoteBindings: false,
       // Real KV storage for the OAuth tests; production binds OAUTH_KV in wrangler.toml.
       miniflare: { kvNamespaces: ["TEST_OAUTH_KV"] },
     }),

@@ -22,7 +22,7 @@ export async function cacheKey(kind: string, parts: Record<string, unknown>): Pr
  * skipped when the budget cannot cover it. Cache failures never fail a tool.
  */
 export async function cacheGet(kv: KvBinding, budget: Budget, key: string): Promise<CachedEntry | null> {
-  if (!budget.tryTake()) return null;
+  if (!budget.tryTakeInternal()) return null;
   try {
     const raw = await kv.get(key);
     if (!raw) return null;
@@ -36,7 +36,7 @@ export async function cacheGet(kv: KvBinding, budget: Budget, key: string): Prom
 }
 
 export async function cachePut(kv: KvBinding, budget: Budget, key: string, output: string, ttl: number): Promise<void> {
-  if (!budget.tryTake()) return;
+  if (!budget.tryTakeInternal()) return;
   const entry: CachedEntry = { output, cachedAt: new Date().toISOString() };
   try {
     await kv.put(key, JSON.stringify(entry), {

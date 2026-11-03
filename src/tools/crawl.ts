@@ -1,6 +1,6 @@
 import { CRAWL_CONCURRENCY, MAX_CRAWL_PAGES, SKIP_EXTENSIONS } from "../config";
 import type { ToolContext } from "../context";
-import { extractPage } from "../extract";
+import { type ReadablePage, convertForReading } from "../convert";
 import { fetchPage } from "../fetch";
 import { type RobotsPolicy, fetchRobotsPolicy } from "../robots";
 import { clampNumber, errorMessage, requireHttpUrl, truncate } from "../util";
@@ -46,6 +46,18 @@ async function crawl(args: Record<string, unknown>, ctx: ToolContext): Promise<s
       const remaining = limit - results.length - errors.length;
       const batch = frontier.slice(i, i + Math.min(CRAWL_CONCURRENCY, remaining));
       const settled = await Promise.allSettled(batch.map((u) => fetchPage(u, ctx)));
+      // Convert in parallel; each page that fetched cleanly becomes Markdown plus its links.
+      const converted = await Promise.all(
+        settled.map((outcome) =>
+          outcome.status === "fulfilled" && outcome.value.isHtml && outcome.value.status < 400
+            ? convertForReading(outcome.value.body, outcome.value.url, ctx.env.AI, ctx.budget, {
+                format: "markdown",
+                onlyMainContent: true,
+                needLinks: true,
+              })
+            : Promise.resolve(null),
+        ),
+      );
 
       settled.forEach((outcome, index) => {
         const pageUrl = batch[index];
@@ -62,11 +74,11 @@ async function crawl(args: Record<string, unknown>, ctx: ToolContext): Promise<s
           errors.push(`${pageUrl}: HTTP ${page.status}`);
           return;
         }
-        const extracted = extractPage(page.body, page.url, true);
+        const extracted = converted[index] as ReadablePage;
         results.push({
           url: page.url,
           title: extracted.title,
-          markdown: truncate(extracted.markdown, maxCharsPerPage),
+          markdown: truncate(extracted.content, maxCharsPerPage),
         });
         if (depth < maxDepth) {
           for (const link of extracted.links) {

@@ -71,7 +71,7 @@ Everything is optional. Without any of it, all tools work.
 | `GITHUB_TOKEN` | Higher GitHub limits and code search for `prior_art`. Recommended. |
 | `BRAVE_API_KEY` | Brave Search instead of DuckDuckGo. |
 | `OPENALEX_API_KEY` | Higher OpenAlex daily budget. |
-| `AI` | Embedding rerank in `research` (Workers AI free tier). |
+| `AI` | On by default. Converts pages on Cloudflare's side to stay within the free CPU limit, and reranks `research` passages. |
 | `CACHE` | KV cache for `scrape`. |
 | `OAUTH_KV` + `AUTH_PASSWORD` | OAuth sign-in instead of a secret URL. |
 | `RATE_LIMITER` | Rate limit tool calls (in-memory fallback otherwise). |
@@ -82,7 +82,7 @@ Setup and free-tier limits for each: [docs/configuration.md](docs/configuration.
 ## Limits
 
 - Workers Free allows 50 outbound requests per call. EMAF budgets for that and reads fewer pages instead of failing. `crawl` stops at 40 pages.
-- Workers Free allows 10 ms of CPU per request. Deep research and large PDFs can go over.
+- Workers Free allows 10 ms of CPU per request. With the `AI` binding, page conversion runs on Cloudflare and does not count; without it, `research` uses a fast text extractor, while `scrape`, `crawl` and large PDFs can go over on big pages.
 - No JavaScript rendering without `BROWSER`. No OCR for scanned PDFs.
 - PyPI has no search API, so `prior_art` finds Python packages by name guesses and through GitHub.
 - Sites with strong bot protection may block requests.

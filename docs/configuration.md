@@ -21,9 +21,22 @@ Free-tier numbers below are from the Cloudflare docs, checked November 2026.
 | `OPENALEX_MAILTO` | Contact address sent to OpenAlex. |
 | `RATE_LIMIT_PER_MINUTE` | Tool calls per minute for the in-memory limiter. Default 60, `0` disables it. |
 
-## Embedding rerank (`AI`)
+## Workers AI (`AI`)
 
-With a Workers AI binding, `research` reorders the top 30 BM25 passages by cosine similarity of [`@cf/baai/bge-base-en-v1.5`](https://developers.cloudflare.com/workers-ai/models/bge-base-en-v1.5/) embeddings, in one call. If the binding is missing or the call fails, BM25 is used alone.
+The binding is enabled in `wrangler.toml`. It does two things.
+
+### Page conversion
+
+Parsing a page into a DOM is the expensive part of EMAF: Readability and Turndown take about 550 ms of CPU on a 650 KB Wikipedia article, far over the 10 ms Workers Free allows per request. With the binding, `scrape`, `batch_scrape`, `crawl` and `research` send HTML to [Markdown Conversion](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/), which runs on Cloudflare and does not count as this Worker's CPU time. Cloudflare describes it as free for most formats and names only image conversion as using Workers AI models, which EMAF never sends.
+
+- If a conversion fails, the tool falls back to local extraction for that page.
+- `format: "html"`, `onlyMainContent: false` and text output with `includeLinks` always use the local pipeline.
+- Without the binding, `research` uses a fast local text extractor (about 3 ms on the same page), and the other tools use Readability and Turndown.
+- Each conversion counts against the budget for calls to Cloudflare services (900 per request), not the external budget of 45.
+
+### Embedding rerank
+
+`research` reorders the top 30 BM25 passages by cosine similarity of [`@cf/baai/bge-base-en-v1.5`](https://developers.cloudflare.com/workers-ai/models/bge-base-en-v1.5/) embeddings, in one call. If the binding is missing or the call fails, BM25 is used alone.
 
 - Workers Free includes 10,000 neurons per day, reset at 00:00 UTC. After that, calls fail until the reset and `research` falls back to BM25.
 - One rerank embeds about 10,000 to 12,000 tokens, roughly 60 to 75 neurons. That is about 130 reranked calls per day for free.
@@ -71,7 +84,7 @@ Uncomment the `[browser]` block to enable `render: true` on `scrape` through [Br
 
 ## Request budget
 
-Workers Free allows 50 external subrequests per invocation, plus 1,000 to Cloudflare services such as KV and Workers AI. EMAF counts every outbound call, of both kinds, against one budget of 45 per MCP request; batched calls share it. Tools plan within what is left and degrade instead of failing, and their output says how much was used.
+Workers Free allows 50 external subrequests per invocation, plus 1,000 to Cloudflare services such as KV and Workers AI. EMAF tracks both per MCP request: 45 external calls (fetches) and 900 calls to Cloudflare services (KV, Workers AI); batched calls share them. Tools plan within what is left and degrade instead of failing, and their output says how much was used.
 
 Typical cost: `research` (normal) makes 2 web searches, 1 OpenAlex call, 1 arXiv call and up to 6 page reads. `prior_art` makes 2 GitHub searches, 1 npm search, up to 3 PyPI lookups, up to 4 repository lookups and up to 10 README fetches.
 

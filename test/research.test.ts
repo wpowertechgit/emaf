@@ -70,7 +70,9 @@ describe("research", () => {
     expect(titles).not.toContain("Gardening");
     expect(titles).not.toContain("Soil erosion in alpine meadows");
     expect(text).not.toContain("Hydration and sleep");
-    expect(sourceBlock(text, "Fasting and insulin")).toContain("Section: Insulin sensitivity\n> Several trials report");
+    expect(sourceBlock(text, "Fasting and insulin")).toContain(
+      "Section: What studies say about fasting > Insulin sensitivity\n> Several trials report",
+    );
     expect(text).toContain("Type: web page (search snippet only, page not read)");
   });
 
@@ -139,8 +141,9 @@ describe("research", () => {
     expect(run.mock.calls[0][0]).toBe("@cf/baai/bge-base-en-v1.5");
     expect(sourceTitles(text)[0]).toBe("Fasting Windows and Insulin Response: A Data-Driven Analysis");
     expect(text).toContain("Ranking: BM25, then embedding rerank of the top");
-    // The AI call is counted against the budget.
-    expect(budget.used).toBe(mock.requested.length + 1);
+    // Fetches count as external subrequests, the AI call against the Cloudflare services pool.
+    expect(budget.used).toBe(mock.requested.length);
+    expect(budget.usedInternal).toBe(1);
   });
 
   it("falls back to BM25 when the embedding call fails", async () => {
