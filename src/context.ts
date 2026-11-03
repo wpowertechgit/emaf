@@ -5,4 +5,6 @@ import type { Env } from "./env";
 export interface ToolContext {
   env: Env;
   budget: Budget;
+  /** Rate limit key for the caller; tool calls are not rate limited when absent. */
+  rateLimitKey?: string;
 }

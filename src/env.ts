@@ -9,6 +9,11 @@ export interface KvBinding {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
+/** The Workers Rate Limiting binding API. */
+export interface RateLimitBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Env {
   /** Secret path segment of the MCP endpoint (/mcp/<MCP_SECRET>). Required. */
   MCP_SECRET?: string;
@@ -26,4 +31,8 @@ export interface Env {
   AI?: AiBinding;
   /** KV namespace for cached scrape results. Optional. */
   CACHE?: KvBinding;
+  /** Workers Rate Limiting binding for tool calls. Optional. */
+  RATE_LIMITER?: RateLimitBinding;
+  /** Tool calls per minute for the in-memory fallback limiter; "0" disables it. Optional. */
+  RATE_LIMIT_PER_MINUTE?: string;
 }

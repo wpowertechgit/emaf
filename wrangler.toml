@@ -19,9 +19,20 @@ compatibility_flags = ["nodejs_compat"]
 # binding = "CACHE"
 # id = "<namespace id>"
 
+# Optional: Workers Rate Limiting for tool calls (see README.md). namespace_id is
+# any integer unique within your account; no resource needs to be created.
+# [[ratelimits]]
+# name = "RATE_LIMITER"
+# namespace_id = "1001"
+#
+#   [ratelimits.simple]
+#   limit = 60
+#   period = 60
+
 # Optional plain variables.
 # [vars]
 # OPENALEX_MAILTO = "you@example.com"
+# RATE_LIMIT_PER_MINUTE = "60"
 
 # Secrets (set with `npx wrangler secret put <NAME>`):
 #   MCP_SECRET        required, the secret path segment of the MCP URL

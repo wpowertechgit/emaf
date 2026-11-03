@@ -58,8 +58,9 @@ export function mockFetch(routes: FixtureRoutes): FetchMock {
   return mock;
 }
 
+/** Test environment. The in-memory rate limiter is off unless a test enables it. */
 export function testEnv(overrides: Partial<Env> = {}): Env {
-  return { MCP_SECRET: TEST_SECRET, ...overrides };
+  return { MCP_SECRET: TEST_SECRET, RATE_LIMIT_PER_MINUTE: "0", ...overrides };
 }
 
 export function request(

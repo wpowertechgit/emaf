@@ -1,5 +1,6 @@
 import { DEFAULT_PROTOCOL_VERSION, SERVER_INFO, SUPPORTED_PROTOCOL_VERSIONS } from "../config";
 import type { ToolContext } from "../context";
+import { allowToolCall } from "../ratelimit";
 import { TOOL_DEFINITIONS, TOOL_HANDLERS } from "../tools";
 import { ToolError } from "../util";
 
@@ -14,6 +15,9 @@ export interface JsonRpcRequest {
 
 const SERVER_INSTRUCTIONS =
   "Research and web reading tools. Use `research` to look into a question or fact-check a claim (ranked passages from web pages, papers and preprints), `prior_art` to find existing open-source projects or packages for a feature, `scrape` to read one URL in full, `batch_scrape` to read a list of URLs, `crawl` to read several pages of one site, `map` to list a site's URLs, and `search` for raw web search results.";
+
+const RATE_LIMITED_MESSAGE =
+  "Error: Rate limit reached for this server. Wait about a minute before calling tools again.";
 
 export function rpcResult(id: JsonRpcId, result: unknown) {
   return { jsonrpc: "2.0", id, result };
@@ -72,6 +76,12 @@ export async function handleMessage(message: JsonRpcRequest, ctx: ToolContext): 
         params.arguments && typeof params.arguments === "object"
           ? (params.arguments as Record<string, unknown>)
           : {};
+      if (ctx.rateLimitKey && !(await allowToolCall(ctx.env, ctx.rateLimitKey))) {
+        return rpcResult(id, {
+          content: [{ type: "text", text: RATE_LIMITED_MESSAGE }],
+          isError: true,
+        });
+      }
       try {
         const text = await handler(args, ctx);
         return rpcResult(id, { content: [{ type: "text", text }], isError: false });

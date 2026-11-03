@@ -66,6 +66,8 @@ All of these are optional; every tool works without them.
 | `OPENALEX_MAILTO` | variable | Contact address sent to OpenAlex as `mailto`. |
 | `AI` | binding | [Workers AI](https://developers.cloudflare.com/workers-ai/). Enables the embedding rerank stage of `research`. |
 | `CACHE` | binding | [Workers KV](https://developers.cloudflare.com/kv/) namespace that caches `scrape` results. |
+| `RATE_LIMITER` | binding | [Workers Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) for tool calls. |
+| `RATE_LIMIT_PER_MINUTE` | variable | Tool calls per minute for the in-memory fallback limiter used without `RATE_LIMITER` (default 60, `0` disables it). |
 | `BROWSER` | binding | [Browser Rendering](https://developers.cloudflare.com/browser-rendering/). Enables `render: true` on `scrape`. |
 
 Secrets are set with `npx wrangler secret put <NAME>`. Bindings and variables are configured in `wrangler.toml` (commented examples are included).
@@ -91,11 +93,18 @@ npx wrangler kv namespace create CACHE
 
 `scrape` then stores each successful result under a hash of the URL and the output options, with `cacheTtl` seconds of expiry (default 3600, minimum 60), and serves later calls from the cache while the copy is younger than `cacheTtl`. Cached responses start with a note giving their age. Error pages are not cached, and a failing cache never fails a scrape.
 
-KV is included in Workers Free: 100,000 reads, 1,000 writes and 1 GB of storage per day (from the Cloudflare docs, checked November 2026). Every cache miss is one write, so the free plan caches up to 1,000 new pages per day; beyond that, writes fail and `scrape` keeps working uncached. KV reads and writes count as subrequests and are included in the budget.
+KV is included in Workers Free: 100,000 reads, 1,000 writes and 1 GB of storage per day (from the Cloudflare docs, checked November 2026). Every cache miss is one write, so the free plan caches up to 1,000 new pages per day; beyond that, writes fail and `scrape` keeps working uncached. KV reads and writes are included in the subrequest budget.
+
+### Rate limiting
+
+Tool calls (`tools/call`) are rate limited per secret; the handshake, `tools/list` and pings are not. The key is derived from a hash of `MCP_SECRET`, never the secret itself. A limited call returns a tool error asking Claude to wait, and the tool does not run.
+
+- With the `RATE_LIMITER` binding (the commented `[[ratelimits]]` block in `wrangler.toml`), Cloudflare's limiter applies. It is approximate and counts separately in each Cloudflare location.
+- Without it, an in-memory limiter allows `RATE_LIMIT_PER_MINUTE` tool calls per minute (default 60) in each Worker isolate. It is a best-effort guard against a leaked secret, not a global limit. Set it to `0` to disable it.
 
 ## Limits
 
-- **Subrequests.** Workers Free allows 50 outbound subrequests per invocation. EMAF counts every outbound call (fetches, the Workers AI call, Browser Rendering) against a budget of 45 per MCP request; batched JSON-RPC calls share it. `research` plans its page reads within the remaining budget and falls back to search snippets when it runs low; `prior_art` limits README and repository lookups the same way. The output reports how many subrequests were used.
+- **Subrequests.** Workers Free allows 50 external subrequests per invocation, plus 1,000 to Cloudflare services such as KV and Workers AI. EMAF counts every outbound call (fetches, KV, the Workers AI call, Browser Rendering) against a single budget of 45 per MCP request, which stays below the stricter external limit; batched JSON-RPC calls share it. `research` plans its page reads within the remaining budget and falls back to search snippets when it runs low; `prior_art` limits README and repository lookups the same way. The output reports how many subrequests were used.
 - **Typical cost.** `research` (normal): 2 web searches, 1 OpenAlex call, 1 arXiv call and up to 6 page reads. `prior_art`: 2 GitHub searches, 1 npm search, up to 3 PyPI lookups, up to 4 repository lookups and up to 10 READMEs.
 - **CPU time.** Workers Free allows 10 ms of CPU time per invocation. Parsing and ranking many pages (`crawl`, `research` with `depth: "deep"`) can exceed it; Workers Paid raises the limit.
 - **Crawl** is capped at 40 pages per call. Run several crawls with different `pathPrefix` values for larger sites.

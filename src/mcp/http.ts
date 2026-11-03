@@ -1,5 +1,6 @@
 import { Budget } from "../budget";
 import type { Env } from "../env";
+import { rateLimitKey } from "../ratelimit";
 import { type JsonRpcRequest, handleMessage, rpcError } from "./jsonrpc";
 
 export const CORS_HEADERS = {
@@ -36,7 +37,11 @@ export async function handleMcpRequest(request: Request, env: Env): Promise<Resp
   }
 
   // One budget per invocation: batched tool calls share the subrequest limit.
-  const ctx = { env, budget: new Budget() };
+  const ctx = {
+    env,
+    budget: new Budget(),
+    rateLimitKey: env.MCP_SECRET ? await rateLimitKey(env.MCP_SECRET) : undefined,
+  };
 
   let payload: unknown;
   try {
