@@ -2,6 +2,7 @@ import { MAX_CACHE_TTL, cacheGet, cacheKey, cachePut } from "../cache";
 import type { ToolContext } from "../context";
 import { extractPage } from "../extract";
 import { fetchPage } from "../fetch";
+import { pdfOutput } from "../pdf";
 import { ToolError, clampNumber, requireHttpUrl, truncate } from "../util";
 import type { Tool } from "./types";
 
@@ -18,7 +19,13 @@ async function fetchAndRender(
   ctx: ToolContext,
   options: { format: string; onlyMainContent: boolean; render: boolean; includeLinks: boolean },
 ): Promise<Rendered> {
-  const page = await fetchPage(url, ctx, options.render);
+  const page = await fetchPage(url, ctx, options.render, { allowPdf: true });
+  if (page.pdf) {
+    return {
+      output: await pdfOutput(page.pdf, page.url, page.status, options.format),
+      cacheable: page.status < 400,
+    };
+  }
   const header = [`URL: ${page.url}`, `Status: ${page.status}`];
 
   if (!page.isHtml) {
@@ -75,7 +82,7 @@ export const scrapeTool: Tool = {
     name: "scrape",
     description:
       "Read one specific web page (a URL you already have) and return its full content as clean Markdown. " +
-      "Use this to read a source in full, for example a result from `research` before quoting it. By default only the main article content is kept (navigation, footers and ads are stripped).",
+      "Use this to read a source in full, for example a result from `research` before quoting it. PDFs are converted to text, page by page. By default only the main article content of HTML pages is kept (navigation, footers and ads are stripped).",
     inputSchema: {
       type: "object",
       properties: {

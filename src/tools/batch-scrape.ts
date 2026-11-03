@@ -1,6 +1,7 @@
 import type { ToolContext } from "../context";
 import { extractPage } from "../extract";
 import { fetchPage } from "../fetch";
+import { pdfOutput } from "../pdf";
 import { ToolError, clampNumber, errorMessage, normalizeUrl, requireHttpUrl, truncate } from "../util";
 import type { Tool } from "./types";
 
@@ -22,8 +23,12 @@ async function scrapeOne(
   maxCharsPerPage: number,
 ): Promise<PageResult> {
   try {
-    const page = await fetchPage(url, ctx);
+    const page = await fetchPage(url, ctx, false, { allowPdf: true });
     if (page.status >= 400) return { url, ok: false, text: `HTTP ${page.status}` };
+    if (page.pdf) {
+      const output = await pdfOutput(page.pdf, page.url, page.status, format);
+      return { url, ok: true, text: truncate(output, maxCharsPerPage) };
+    }
     if (!page.isHtml) {
       return { url, ok: true, text: `URL: ${page.url}\n\n${truncate(page.body, maxCharsPerPage)}` };
     }

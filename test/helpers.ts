@@ -6,7 +6,7 @@ export const BASE_URL = "https://emaf.test";
 export const MCP_URL = `${BASE_URL}/mcp/${TEST_SECRET}`;
 
 export interface FixtureResponse {
-  body: string;
+  body: string | Uint8Array<ArrayBuffer>;
   status?: number;
   contentType?: string;
   headers?: Record<string, string>;
