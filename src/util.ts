@@ -27,15 +27,27 @@ export function truncate(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars)}\n\n[... truncated, ${text.length - maxChars} more characters]`;
 }
 
-export function normalizeUrl(href: string, base: string): string | null {
+/** Resolves an http(s) link against a base URL, keeping its fragment. Null for other schemes. */
+export function resolveHttpUrl(href: string, base: string): string | null {
   try {
     const url = new URL(href, base);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    url.hash = "";
     return url.href;
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolves an http(s) link and removes its fragment. Used as the identity of a
+ * page for deduplication in crawl and map, where "#a" and "#b" are one page.
+ */
+export function normalizeUrl(href: string, base: string): string | null {
+  const resolved = resolveHttpUrl(href, base);
+  if (resolved === null) return null;
+  const url = new URL(resolved);
+  url.hash = "";
+  return url.href;
 }
 
 export function errorMessage(err: unknown): string {

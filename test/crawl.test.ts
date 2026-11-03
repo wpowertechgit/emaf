@@ -100,6 +100,19 @@ describe("crawl", () => {
     expect(text).toMatch(/\[\.\.\. truncated, \d+ more characters\]/);
   });
 
+  it("treats links that differ only by fragment as one page", async () => {
+    const hub = `<html><head><title>Hub</title></head><body>
+      <a href="/guide#a">A</a> <a href="/guide#b">B</a> <a href="#top">Top</a></body></html>`;
+    const mock = mockFetch({
+      [`${SITE}/`]: hub,
+      [`${SITE}/guide`]: "<html><head><title>Guide</title></head><body>guide</body></html>",
+    });
+    const { text } = await callTool("crawl", { url: `${SITE}/#intro`, maxDepth: 1 });
+    expect(mock.unexpected).toEqual([]);
+    expect(mock.requested).toEqual([`${SITE}/`, `${SITE}/guide`]);
+    expect(text).toContain(`[A](${SITE}/guide#a)`);
+  });
+
   it("does not fetch the same page twice", async () => {
     const mock = mockFetch(CRAWL_SITE);
     await callTool("crawl", { url: `${SITE}/`, maxDepth: 3, limit: 40 });

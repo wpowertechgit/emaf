@@ -68,7 +68,10 @@ export const ARTICLE_HTML = page({
 console.log(answer);</code></pre>
     <p>Read the <a href="../guide/setup.html">setup guide</a> and the
        <a href="/reference">reference</a>.</p>
+    <p>See the <a href="/reference#install">install section</a> and footnote
+       <a href="#fn1">1</a>.</p>
     <p><img src="images/diagram.png" alt="Diagram"></p>
+    <p id="fn1">1. The footnote text.</p>
   `,
 });
 

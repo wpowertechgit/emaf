@@ -33,6 +33,15 @@ describe("map", () => {
     ]);
   });
 
+  it("lists URLs without fragments", async () => {
+    mockFetch({
+      [`${SITE}/page`]: `<html><body><a href="/a#x">x</a><a href="/a#y">y</a><a href="#top">top</a></body></html>`,
+      [`${SITE}/sitemap.xml`]: { body: "Not found", status: 404 },
+    });
+    const { text } = await callTool("map", { url: `${SITE}/page` });
+    expect(urlLines(text)).toEqual([`${SITE}/a`, `${SITE}/page`]);
+  });
+
   it("includes other hosts when sameDomainOnly is false", async () => {
     mockFetch({
       [`${SITE}/docs/`]: CRAWL_SITE[`${SITE}/docs/`],

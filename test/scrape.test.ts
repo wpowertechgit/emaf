@@ -54,6 +54,21 @@ describe("scrape", () => {
     expect(text).toContain(`![Diagram](${SITE}/docs/start/images/diagram.png)`);
   });
 
+  it("keeps URL fragments in output links", async () => {
+    mockFetch({ [ARTICLE_URL]: ARTICLE_HTML });
+    const { text } = await callTool("scrape", { url: ARTICLE_URL });
+    expect(text).toContain(`[install section](${SITE}/reference#install)`);
+    expect(text).toContain(`[1](${ARTICLE_URL}#fn1)`);
+  });
+
+  it("lists links without fragments and without duplicates", async () => {
+    mockFetch({ [ARTICLE_URL]: ARTICLE_HTML });
+    const { text } = await callTool("scrape", { url: ARTICLE_URL, includeLinks: true });
+    const links = text.slice(text.indexOf("## Links")).split("\n").filter((l) => l.startsWith("- "));
+    expect(links.filter((l) => l === `- ${SITE}/reference`)).toHaveLength(1);
+    expect(links.some((l) => l.includes("#"))).toBe(false);
+  });
+
   it("resolves links against the final URL after redirects", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       const response = new Response(ARTICLE_HTML, { headers: { "Content-Type": "text/html" } });

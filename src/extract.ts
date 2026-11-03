@@ -3,7 +3,7 @@ import { Readability } from "@mozilla/readability";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { cleanImageUrl, isBadgeUrl } from "./images";
-import { normalizeUrl } from "./util";
+import { normalizeUrl, resolveHttpUrl } from "./util";
 
 export interface ExtractedPage {
   title: string;
@@ -66,13 +66,16 @@ function wrapFragment(fragmentHtml: string): string {
 export function extractPage(html: string, pageUrl: string, onlyMainContent: boolean): ExtractedPage {
   const { document } = parseHTML(html);
 
-  // Make links and images absolute so the Markdown stays usable.
+  // Make links and images absolute so the Markdown stays usable. Output links
+  // keep their fragment (footnotes, section anchors); the collected link list
+  // is fragment-free because crawl and map use it to deduplicate pages.
   const links = new Set<string>();
   for (const a of Array.from(document.querySelectorAll("a[href]"))) {
-    const abs = normalizeUrl(a.getAttribute("href") ?? "", pageUrl);
+    const href = a.getAttribute("href") ?? "";
+    const abs = resolveHttpUrl(href, pageUrl);
     if (abs) {
       a.setAttribute("href", abs);
-      links.add(abs);
+      links.add(normalizeUrl(href, pageUrl) as string);
     }
   }
   for (const img of Array.from(document.querySelectorAll("img"))) {
