@@ -330,6 +330,7 @@ async function priorArt(args: Record<string, unknown>, ctx: ToolContext): Promis
 export const priorArtTool: Tool = {
   definition: {
     name: "prior_art",
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     description:
       "Find existing open-source projects and packages that already implement a feature or idea. " +
       "Use this for 'does something like this already exist', 'is there a library/package/tool for X', or before proposing to build something new. " +

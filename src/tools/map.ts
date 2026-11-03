@@ -65,6 +65,7 @@ async function map(args: Record<string, unknown>, ctx: ToolContext): Promise<str
 export const mapTool: Tool = {
   definition: {
     name: "map",
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     description:
       "List the URLs of one specific website without fetching their content: links on the given page plus entries from /sitemap.xml. Useful to find the right page on a known site before scraping it.",
     inputSchema: {

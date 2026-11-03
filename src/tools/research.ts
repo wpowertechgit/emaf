@@ -380,6 +380,7 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
 export const researchTool: Tool = {
   definition: {
     name: "research",
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     description:
       "Research a question across the web and academic literature and return the most relevant passages, ranked and grouped by source with citations. " +
       "Use this first for 'look into X', 'fact-check this claim', 'what is known about X', 'find evidence/studies on X' or any question that needs multiple sources. " +

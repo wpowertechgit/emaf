@@ -107,6 +107,7 @@ async function batchScrape(args: Record<string, unknown>, ctx: ToolContext): Pro
 export const batchScrapeTool: Tool = {
   definition: {
     name: "batch_scrape",
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     description:
       `Read several specific web pages at once, possibly from different sites, and return each one as clean Markdown. ` +
       `Use when you already have a list of URLs (for example sources found by \`research\` or \`search\`). ` +

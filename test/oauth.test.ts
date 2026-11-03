@@ -2,7 +2,8 @@ import { env as testBindings } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { resetRateLimitState } from "../src/ratelimit";
-import { BASE_URL, postMcp, request, testEnv } from "./helpers";
+import { page, SITE } from "./fixtures";
+import { BASE_URL, mockFetch, postMcp, request, testEnv } from "./helpers";
 
 const PASSWORD = "correct horse battery staple";
 const REDIRECT_URI = "https://claude.test/api/mcp/auth_callback";
@@ -30,7 +31,7 @@ async function pkce(): Promise<{ verifier: string; challenge: string }> {
   return { verifier, challenge };
 }
 
-async function registerClient(env: Env, name = "Claude"): Promise<string> {
+async function registerClient(env: Env, name = "Claude", redirectUri = REDIRECT_URI): Promise<string> {
   const response = await request(
     "/oauth/register",
     {
@@ -38,7 +39,7 @@ async function registerClient(env: Env, name = "Claude"): Promise<string> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         client_name: name,
-        redirect_uris: [REDIRECT_URI],
+        redirect_uris: [redirectUri],
         token_endpoint_auth_method: "none",
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
@@ -51,11 +52,11 @@ async function registerClient(env: Env, name = "Claude"): Promise<string> {
 }
 
 /** Opens the consent page and returns what the browser would keep: the form handle and cookies. */
-async function openConsent(env: Env, clientId: string, challenge: string) {
+async function openConsent(env: Env, clientId: string, challenge: string, redirectUri = REDIRECT_URI) {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     code_challenge: challenge,
     code_challenge_method: "S256",
     state: "state-123",
@@ -85,31 +86,50 @@ function submitConsent(env: Env, consent: { handle: string; cookie: string }, fi
   );
 }
 
-async function obtainToken(env: Env): Promise<string> {
-  const clientId = await registerClient(env);
-  const { verifier, challenge } = await pkce();
-  const consent = await openConsent(env, clientId, challenge);
-  const approved = await submitConsent(env, consent, { decision: "approve", password: PASSWORD });
-  expect(approved.status).toBe(302);
-  const code = new URL(approved.headers.get("Location") ?? "").searchParams.get("code") ?? "";
-  const response = await request(
+interface Tokens {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+function requestToken(env: Env, fields: Record<string, string>) {
+  return request(
     "/oauth/token",
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: REDIRECT_URI,
-        client_id: clientId,
-        code_verifier: verifier,
-        resource: RESOURCE,
-      }).toString(),
+      body: new URLSearchParams(fields).toString(),
     },
     env,
   );
+}
+
+async function obtainGrant(env: Env, redirectUri = REDIRECT_URI, registeredRedirectUri = redirectUri) {
+  const clientId = await registerClient(env, "Codex", registeredRedirectUri);
+  const { verifier, challenge } = await pkce();
+  const consent = await openConsent(env, clientId, challenge, redirectUri);
+  expect(consent.response.status).toBe(200);
+  const approved = await submitConsent(env, consent, { decision: "approve", password: PASSWORD });
+  expect(approved.status).toBe(302);
+  const callback = new URL(approved.headers.get("Location") ?? "");
+  expect(callback.origin + callback.pathname).toBe(redirectUri);
+  expect(callback.searchParams.get("state")).toBe("state-123");
+  expect(callback.searchParams.get("iss")).toBe(BASE_URL);
+  const response = await requestToken(env, {
+    grant_type: "authorization_code",
+    code: callback.searchParams.get("code") ?? "",
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    code_verifier: verifier,
+    resource: RESOURCE,
+  });
   expect(response.status).toBe(200);
-  return ((await response.json()) as { access_token: string }).access_token;
+  return { clientId, tokens: (await response.json()) as Tokens };
+}
+
+async function obtainToken(env: Env): Promise<string> {
+  return (await obtainGrant(env)).tokens.access_token;
 }
 
 function mcpWithToken(env: Env, token: string, body: unknown) {
@@ -165,6 +185,96 @@ describe("OAuth", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { tools: { name: string }[] } };
     expect(body.result.tools.map((t) => t.name)).toContain("research");
+  });
+
+  it.each([43127, 51843])("accepts a Codex loopback callback on port %i", async (port) => {
+    const env = oauthEnv();
+    const registered = "http://127.0.0.1/callback/emaf-test";
+    const redirectUri = `http://127.0.0.1:${port}/callback/emaf-test`;
+    const { tokens } = await obtainGrant(env, redirectUri, registered);
+    const response = await mcpWithToken(env, tokens.access_token, { jsonrpc: "2.0", id: 1, method: "ping" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ jsonrpc: "2.0", id: 1, result: {} });
+  });
+
+  it.each([
+    "http://127.0.0.1:43127/callback/another-server",
+    "http://localhost:43127/callback/emaf-test",
+  ])("rejects a loopback callback that changes the registered host or path: %s", async (redirectUri) => {
+    const env = oauthEnv();
+    const clientId = await registerClient(env, "Codex", "http://127.0.0.1/callback/emaf-test");
+    const consent = await openConsent(env, clientId, (await pkce()).challenge, redirectUri);
+    expect(consent.response.status).toBe(400);
+    expect(consent.handle).toBe("");
+  });
+
+  it("refreshes a Codex token without repeating consent", async () => {
+    const env = oauthEnv();
+    const { clientId, tokens } = await obtainGrant(env, "http://127.0.0.1:43127/callback/emaf-test");
+    expect(tokens.refresh_token).toBeTruthy();
+    const response = await requestToken(env, {
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token,
+      client_id: clientId,
+      resource: RESOURCE,
+    });
+    expect(response.status).toBe(200);
+    const refreshed = (await response.json()) as Tokens;
+    expect(refreshed.access_token).toBeTruthy();
+    expect(refreshed.access_token).not.toBe(tokens.access_token);
+    expect(refreshed.refresh_token).toBeTruthy();
+    expect(refreshed.refresh_token).not.toBe(tokens.refresh_token);
+    expect(refreshed.token_type.toLowerCase()).toBe("bearer");
+    expect(refreshed.expires_in).toBeGreaterThan(0);
+    const ping = await mcpWithToken(env, refreshed.access_token, { jsonrpc: "2.0", id: 1, method: "ping" });
+    expect(ping.status).toBe(200);
+    expect(await ping.json()).toEqual({ jsonrpc: "2.0", id: 1, result: {} });
+  });
+
+  it.each(["secret URL", "OAuth"])("serves the Codex MCP lifecycle through %s", async (auth) => {
+    const mock = mockFetch({
+      [`${SITE}/robots.txt`]: { body: "User-agent: *\nAllow: /", contentType: "text/plain" },
+      [`${SITE}/docs`]: page({ title: "Connector documentation", heading: "Using the connector" }),
+    });
+    const env = auth === "OAuth" ? oauthEnv() : testEnv();
+    const token = auth === "OAuth" ? await obtainToken(env) : "";
+    const send = (body: unknown) => auth === "OAuth" ? mcpWithToken(env, token, body) : postMcp(body, env);
+    const initialized = await send({
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "codex", version: "test" },
+      },
+    });
+    expect(initialized.status).toBe(200);
+    expect(initialized.headers.get("Content-Type")).toBe("application/json");
+    expect(initialized.headers.has("Mcp-Session-Id")).toBe(false);
+    expect(await initialized.json()).toMatchObject({
+      id: 1, result: { protocolVersion: "2025-06-18", serverInfo: { name: "emaf" } },
+    });
+    const notification = await send({ jsonrpc: "2.0", method: "notifications/initialized" });
+    expect(notification.status).toBe(202);
+    expect(await notification.text()).toBe("");
+    const listed = await send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+    expect(listed.status).toBe(200);
+    const catalog = (await listed.json()) as { result: { tools: { name: string }[] } };
+    expect(catalog.result.tools.map((tool) => tool.name)).toContain("scrape");
+    const called = await send({
+      jsonrpc: "2.0", id: 3, method: "tools/call",
+      params: { name: "scrape", arguments: { url: `${SITE}/docs` } },
+    });
+    expect(called.status).toBe(200);
+    const result = (await called.json()) as {
+      id: number; result: { isError: boolean; content: { type: string; text: string }[] };
+    };
+    expect(result.id).toBe(3);
+    expect(result.result.isError).toBe(false);
+    expect(result.result.content[0].type).toBe("text");
+    expect(result.result.content[0].text).toContain("Using the connector");
+    expect(result.result.content[0].text).toContain(`URL: ${SITE}/docs`);
+    expect(mock.requested).toContain(`${SITE}/docs`);
+    expect(mock.unexpected).toEqual([]);
   });
 
   it("rejects an invalid token", async () => {

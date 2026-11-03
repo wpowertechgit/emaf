@@ -2,7 +2,7 @@
 
 ### Enterprise Markdown Acquisition Framework
 
-Research the web from Claude. Facts with sources, not page dumps.
+Research the web from Claude or Codex. Facts with sources, not page dumps.
 
 Ask a question and get the relevant passages from web pages, papers and preprints, ranked and cited. Ask whether something already exists and get the open-source projects that do it, with the README line that proves it. Read any URL or PDF as clean Markdown.
 
@@ -48,6 +48,19 @@ The secret is the password. Keep the URL private, or use [OAuth](docs/configurat
 **Settings → Connectors → Add custom connector**, paste the endpoint, leave the OAuth fields empty, save.
 
 Optional: upload [`skills/research`](skills/research/SKILL.md) as a Claude skill. It tells Claude how to research: primary sources first, two independent sources per key claim, preprints and single sources called out.
+
+## Connect to Codex
+
+Codex connects directly over Streamable HTTP. With [OAuth configured](docs/configuration.md#oauth):
+
+```bash
+codex mcp add emaf --url https://emaf.YOUR-SUBDOMAIN.workers.dev/mcp
+codex mcp login emaf
+```
+
+Enter the EMAF owner password on the consent page. Run `codex mcp list` to check registration and `/mcp` inside Codex to check the connection.
+
+For the secret URL, `config.toml` settings, troubleshooting and the optional research skill, see [Codex setup](docs/codex.md).
 
 ## Configuration
 

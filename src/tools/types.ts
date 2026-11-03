@@ -3,6 +3,11 @@ import type { ToolContext } from "../context";
 export interface ToolDefinition {
   name: string;
   description: string;
+  annotations: {
+    readOnlyHint: boolean;
+    destructiveHint: boolean;
+    openWorldHint: boolean;
+  };
   inputSchema: {
     type: "object";
     properties: Record<string, unknown>;

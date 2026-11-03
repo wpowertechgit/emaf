@@ -103,6 +103,7 @@ async function crawl(args: Record<string, unknown>, ctx: ToolContext): Promise<s
 export const crawlTool: Tool = {
   definition: {
     name: "crawl",
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     description: `Read several pages of one specific website: crawls breadth-first from a starting URL, staying on the same host, and returns the Markdown of each page. Use for documentation sites or sections (pathPrefix). Limited to ${MAX_CRAWL_PAGES} pages per call.`,
     inputSchema: {
       type: "object",

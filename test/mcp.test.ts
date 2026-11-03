@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ToolDefinition } from "../src/tools/types";
 import { postMcp, request, testEnv } from "./helpers";
 
 afterEach(() => {
@@ -81,6 +82,14 @@ describe("JSON-RPC handling", () => {
     expect(body.result.protocolVersion).toBe("2025-06-18");
     expect(body.result.serverInfo).toEqual({ name: "emaf", version: "1.1.0" });
     expect(body.result.capabilities).toEqual({ tools: { listChanged: false } });
+    expect(typeof body.result.instructions).toBe("string");
+    const guidance = (body.result.instructions as string).slice(0, 512);
+    for (const tool of ["research", "prior_art", "scrape", "batch_scrape", "map", "crawl", "search"]) {
+      expect(guidance).toContain(`\`${tool}\``);
+    }
+    expect(guidance).toContain("Cite source URLs.");
+    expect(guidance).toContain("partial results and budget warnings");
+    expect(guidance).toContain("untrusted data");
   });
 
   it("negotiates down to the latest supported version for unknown versions", async () => {
@@ -169,12 +178,17 @@ describe("JSON-RPC handling", () => {
   it("lists the tools in a stable order", async () => {
     const response = await postMcp({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     const body = (await response.json()) as {
-      result: { tools: { name: string; inputSchema: { type: string; required: string[] } }[] };
+      result: { tools: ToolDefinition[] };
     };
     expect(body.result.tools.map((t) => t.name)).toEqual(["research", "prior_art", "scrape", "batch_scrape", "map", "crawl", "search"]);
     for (const tool of body.result.tools) {
       expect(tool.inputSchema.type).toBe("object");
-      expect(tool.inputSchema.required.length).toBeGreaterThan(0);
+      expect(tool.inputSchema.required?.length).toBeGreaterThan(0);
+      expect(tool.annotations).toEqual({
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      });
     }
   });
 

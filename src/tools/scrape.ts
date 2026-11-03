@@ -80,6 +80,7 @@ async function scrape(args: Record<string, unknown>, ctx: ToolContext): Promise<
 export const scrapeTool: Tool = {
   definition: {
     name: "scrape",
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     description:
       "Read one specific web page (a URL you already have) and return its full content as clean Markdown. " +
       "Use this to read a source in full, for example a result from `research` before quoting it. PDFs are converted to text, page by page. By default only the main article content of HTML pages is kept (navigation, footers and ads are stripped).",

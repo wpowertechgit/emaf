@@ -38,6 +38,7 @@ async function search(args: Record<string, unknown>, ctx: ToolContext): Promise<
 export const searchTool: Tool = {
   definition: {
     name: "search",
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     description:
       "Raw web search: returns result titles, URLs and snippets, optionally with each result's full Markdown. " +
       "For questions, fact-checking or 'look into X', prefer `research`, which ranks relevant passages across web and academic sources.",
