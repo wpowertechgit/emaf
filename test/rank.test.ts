@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bm25Scores, rankBm25 } from "../src/rank/bm25";
+import { isNonContentSection, looksLikeCitationList } from "../src/rank/boilerplate";
 import { chunkMarkdown } from "../src/rank/chunk";
 import { dedupeNearDuplicates } from "../src/rank/dedup";
 import { deriveQueries } from "../src/rank/queries";
@@ -162,5 +163,30 @@ describe("deriveQueries", () => {
     const a = deriveQueries("rust async runtime");
     expect(deriveQueries("rust async runtime")).toEqual(a);
     expect(new Set(a.queries.map((q) => q.toLowerCase())).size).toBe(a.queries.length);
+  });
+});
+
+describe("boilerplate detection", () => {
+  it("recognizes non-content sections anywhere on the heading path", () => {
+    expect(isNonContentSection("Review > References")).toBe(true);
+    expect(isNonContentSection("7. Acknowledgments")).toBe(true);
+    expect(isNonContentSection("Similar articles")).toBe(true);
+    expect(isNonContentSection("Results > Insulin sensitivity")).toBe(false);
+    expect(isNonContentSection("Notable results")).toBe(false);
+    expect(isNonContentSection("")).toBe(false);
+  });
+
+  it("flags citation lists but not prose that cites a few sources", () => {
+    const list = Array.from(
+      { length: 6 },
+      (_, i) => `${i + 1}. Smith J, et al. Fasting and insulin. J Metab. 2021;${i}:1-9. doi: 10.1/x${i}. PubMed.`,
+    ).join("\n");
+    expect(looksLikeCitationList(list)).toBe(true);
+    const prose =
+      "A randomized trial (Smith et al., 2021) found that intermittent fasting improved insulin sensitivity over twelve weeks. " +
+      "Later work confirmed a smaller effect in healthy adults, while the largest benefit appeared in people with prediabetes. " +
+      "The authors caution that adherence was high in the trial setting and may be lower in everyday life.";
+    expect(looksLikeCitationList(prose)).toBe(false);
+    expect(looksLikeCitationList("Smith et al. 2021; doi")).toBe(false);
   });
 });

@@ -175,6 +175,26 @@ describe("research", () => {
     expect(sourceTitles(text)).not.toContain("Gardening");
   });
 
+  it("leaves out reference lists, which match every keyword but say nothing", async () => {
+    const citations = Array.from(
+      { length: 12 },
+      (_, i) =>
+        `${i + 1}. Author A, Author B, et al. Intermittent fasting and insulin sensitivity in adults. J Metab. 20${10 + i};${i}:1-9. doi: 10.1000/x${i}. [PubMed](https://pubmed.test/${i})`,
+    ).join("\n");
+    const page = `<html><head><title>Review page</title></head><body><main>
+      <h1>Review</h1>
+      <p>Intermittent fasting improved insulin sensitivity in the pooled trials of this review, with the largest effect in adults with prediabetes and a smaller effect in healthy adults.</p>
+      <h2>References</h2><p>${citations.replace(/\n/g, "<br>")}</p>
+      <h2>Notes</h2><p>${citations.replace(/\n/g, "<br>")}</p>
+      <div>${citations.replace(/\n/g, "<br>")}</div>
+    </main></body></html>`;
+    mockFetch({ ...RESEARCH_ROUTES, "https://review.test/page": page });
+    const { text } = await callTool("research", { question: QUESTION, urls: ["https://review.test/page"] });
+    expect(text).toContain("pooled trials of this review");
+    expect(text).not.toContain("Section: Review > References");
+    expect(text).not.toContain("doi: 10.1000/x3");
+  });
+
   it("suggests passing urls when its own web search fails", async () => {
     mockFetch({ ...RESEARCH_ROUTES, "https://html.duckduckgo.com/html/": "<html></html>" });
     const { text } = await callTool("research", { question: QUESTION });
