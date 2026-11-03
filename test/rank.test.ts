@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bm25Scores, rankBm25 } from "../src/rank/bm25";
-import { isNonContentSection, looksLikeCitationList } from "../src/rank/boilerplate";
+import { isNonContentSection, looksLikeCitationList, looksLikeLinkList } from "../src/rank/boilerplate";
 import { chunkMarkdown } from "../src/rank/chunk";
 import { dedupeNearDuplicates } from "../src/rank/dedup";
 import { deriveQueries } from "../src/rank/queries";
@@ -209,5 +209,36 @@ describe("deriveQueries term specificity", () => {
   it("prefers phrases that contain a name", () => {
     const d = deriveQueries("A simple library to convert PDF files to Markdown");
     expect(d.phrases[0]).toBe("convert pdf files");
+  });
+});
+
+describe("link list detection", () => {
+  it("flags lists that mostly link to other projects", () => {
+    const list = [
+      "- [pgai](https://github.com/timescale/pgai) - PostgreSQL as a vector database",
+      "- [MindsDB](https://docs.mindsdb.com/x) - Connect Ollama with 200+ data platforms",
+      "- [chromem-go](https://github.com/philippgille/chromem-go) - Embeddable vector database for Go",
+      "- [Kangaroo](https://github.com/dbkangaroo/kangaroo) - AI-powered SQL client",
+    ].join("\n");
+    expect(looksLikeLinkList(list)).toBe(true);
+  });
+
+  it("keeps feature lists and prose with an occasional link", () => {
+    const features = [
+      "- Syncs your Obsidian vault into a local vector database",
+      "- Answers questions over your notes with RAG",
+      "- Works offline, see the [setup guide](docs/setup.md)",
+      "- [x] Incremental sync",
+    ].join("\n");
+    expect(looksLikeLinkList(features)).toBe(false);
+    expect(looksLikeLinkList("Read the [docs](https://x.test) and the [FAQ](https://y.test) before installing.")).toBe(false);
+  });
+
+  it("treats community integration and similar sections as about other projects", () => {
+    expect(isNonContentSection("Ollama > Community Integrations > Database & Embeddings")).toBe(true);
+    expect(isNonContentSection("Alternatives")).toBe(true);
+    expect(isNonContentSection("Similar projects")).toBe(true);
+    expect(isNonContentSection("Sponsors")).toBe(true);
+    expect(isNonContentSection("Integrations")).toBe(false);
   });
 });

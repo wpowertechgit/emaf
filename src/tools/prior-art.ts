@@ -12,6 +12,7 @@ import { getPyPIProject } from "../clients/pypi";
 import type { ToolContext } from "../context";
 import { cleanMarkdownImages } from "../images";
 import { rankBm25 } from "../rank/bm25";
+import { isNonContentSection, looksLikeLinkList } from "../rank/boilerplate";
 import { chunkMarkdown } from "../rank/chunk";
 import { deriveQueries } from "../rank/queries";
 import { ToolError, clampNumber, errorMessage } from "../util";
@@ -291,6 +292,8 @@ async function priorArt(args: Record<string, unknown>, ctx: ToolContext): Promis
     }
     project.readmeStatus = "read";
     for (const c of chunkMarkdown(cleanMarkdownImages(outcome.value), { minWords: 60, maxWords: 180, dropBelowWords: 8 })) {
+      // Lists of other projects (integrations, alternatives) say nothing about this one.
+      if (isNonContentSection(c.section) || looksLikeLinkList(c.text)) continue;
       passages.push({ project, section: c.section, text: c.text });
     }
   });

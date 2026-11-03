@@ -58,6 +58,28 @@ describe("prior_art", () => {
     expect(text).not.toMatch(/shields\.io|badge\.svg/);
   });
 
+  it("ignores README lists that describe other projects", async () => {
+    const integrations = [
+      "# http-toolkit",
+      "",
+      "A grab bag of HTTP helpers for Node.js servers.",
+      "",
+      "## Community Integrations",
+      "",
+      "- [keylimit](https://github.com/x/keylimit) - Rate limit HTTP requests per API key with a token bucket",
+      "- [bucketeer](https://github.com/x/bucketeer) - Token bucket rate limiting for HTTP APIs",
+      "- [throttle](https://github.com/x/throttle) - Per API key request limits",
+    ].join("\n");
+    mockFetch({
+      ...PRIOR_ART_ROUTES,
+      "https://api.github.com/repos/acme/http-toolkit/readme": { body: integrations, contentType: "text/plain" },
+    });
+    const { text } = await callTool("prior_art", { description: FEATURE });
+    const block = projectBlock(text, "acme/http-toolkit");
+    expect(block).not.toContain("keylimit");
+    expect(block).not.toContain("Community Integrations");
+  });
+
   it("reports maintenance signals per project", async () => {
     mockFetch(PRIOR_ART_ROUTES);
     const { text } = await callTool("prior_art", { description: FEATURE });

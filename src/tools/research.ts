@@ -6,7 +6,7 @@ import type { ToolContext } from "../context";
 import { aiHtmlToMarkdown, fastHtmlText, htmlTitle } from "../convert";
 import { fetchPage } from "../fetch";
 import { rankBm25 } from "../rank/bm25";
-import { isNonContentSection, looksLikeCitationList } from "../rank/boilerplate";
+import { isNonContentSection, looksLikeCitationList, looksLikeLinkList } from "../rank/boilerplate";
 import { chunkMarkdown } from "../rank/chunk";
 import { dedupeNearDuplicates } from "../rank/dedup";
 import { deriveQueries } from "../rank/queries";
@@ -317,7 +317,7 @@ async function research(args: Record<string, unknown>, ctx: ToolContext): Promis
     let chunks: { section: string; text: string }[] = [];
     if (page) {
       chunks = chunkMarkdown(page.text).filter(
-        (c) => !isNonContentSection(c.section) && !looksLikeCitationList(c.text),
+        (c) => !isNonContentSection(c.section) && !looksLikeCitationList(c.text) && !looksLikeLinkList(c.text),
       );
       if (chunks.length) {
         pagesRead++;
