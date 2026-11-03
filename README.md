@@ -1,10 +1,12 @@
 # EMAF
 
-**Extract Markdown And Facts.** Web research tools for Claude, as a self-hosted MCP server on Cloudflare Workers.
+### Extract Markdown And Facts
+
+Research the web from Claude. Facts with sources, not page dumps.
 
 Ask a question and get the relevant passages from web pages, papers and preprints, ranked and cited. Ask whether something already exists and get the open-source projects that do it, with the README line that proves it. Read any URL or PDF as clean Markdown.
 
-Runs on the Workers free plan. No paid APIs required.
+A self-hosted MCP server on Cloudflare Workers. Runs on the free plan, no paid APIs.
 
 ## Tools
 
